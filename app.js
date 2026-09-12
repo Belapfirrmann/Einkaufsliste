@@ -23,16 +23,7 @@ function seed(){
     {id:"m3", name:"dm",      color:COLORS[2], order:2},
     {id:"m4", name:"Bauhaus", color:COLORS[4], order:3}
   ];
-  var cat = [
-    "Milch","Butter","Eier","Vollkornbrot","Käse",
-    "Kaffeebohnen","Olivenöl","Nudeln","Haferflocken",
-    "Tomaten","Bananen","Spülmaschinentabs",
-    "Zahnpasta","Duschgel","Waschmittel","Taschentücher",
-    "Gaffer-Tape","Kabelbinder","Batterien AA","Klebeband"
-  ].map(function(n){ return {id:uid(), name:n}; });
-  var t = Date.now();
-  var items = [];
-  return {markets:m, catalog:cat, items:items};
+  return {markets:m, catalog:[], items:[]};
 }
 
 var db;
@@ -43,7 +34,7 @@ db.markets = db.markets || []; db.catalog = db.catalog || []; db.items = db.item
 db.markets.forEach(function(m, i){ if(typeof m.order !== "number") m.order = i; });
 db.items.forEach(function(it, i){ if(typeof it.createdAt !== "number") it.createdAt = i; });
 
-var ui = {tab:"liste", filter:"all"};
+var ui = {tab:"liste", filter:"all", picked:null};
 
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e){} }
 function market(id){ return db.markets.filter(function(m){return m.id===id;})[0] || null; }
@@ -61,6 +52,14 @@ function drop(kind, id){
   save(); SYNC.drop(kind, id);
 }
 function item(id){ return db.items.filter(function(i){ return i.id===id; })[0] || null; }
+
+function addToMarket(name, marketId){
+  var dup = db.items.some(function(i){
+    return i.marketId === marketId && i.name.toLowerCase() === name.toLowerCase() && !i.done;
+  });
+  if(dup) return;
+  put("items", {id:uid(), name:name, marketId:marketId, done:false, createdAt:Date.now()});
+}
 
 /* ---------- Abgleich ueber Firebase ---------- */
 var SYNC = (function(){
@@ -295,14 +294,18 @@ function renderGroups(){
 /* ---------- Sammelliste: eingeben + Märkte zuordnen ---------- */
 function renderCatalog(){
   var host = $("#catalog");
+  $("#cat-actions").innerHTML = db.catalog.length
+    ? '<button type="button" class="btn ghost small" data-act="cat-clear">Sammelliste leeren</button>' : "";
   if(!db.catalog.length){
     host.innerHTML = '<p class="empty">Die Sammelliste ist leer. Oben ein Produkt eintragen.</p>';
     return;
   }
   var sorted = db.catalog.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
   host.innerHTML = '<div class="pills">' + sorted.map(function(c){
-    return '<span class="pill" draggable="true" data-id="' + c.id + '" data-drag-product="true">' +
-      esc(c.name) +
+    var on = ui.picked === c.id;
+    return '<span class="pill' + (on ? " picked" : "") + '" draggable="true" data-id="' + c.id + '" data-drag-product="true">' +
+      '<button type="button" class="pillname" data-act="pick" data-id="' + c.id + '" aria-pressed="' + on + '">' +
+        esc(c.name) + '</button>' +
       '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
         ' aus der Sammelliste löschen">✕</button>' +
     '</span>';
@@ -315,21 +318,28 @@ function renderSammelMarkets(){
     host.innerHTML = '<p class="empty">Keine Märkte. Im Tab Märkte welche anlegen.</p>';
     return;
   }
+  var picked = ui.picked ? db.catalog.filter(function(c){ return c.id === ui.picked; })[0] : null;
   host.innerHTML = db.markets.map(function(m){
     var items = db.items.filter(function(i){ return i.marketId === m.id; });
-    return '<div class="market-card" data-drop="' + m.id + '" data-drag-zone="true">' +
-      '<div class="market-head"><span class="dot" style="background:' + m.color + '"></span>' +
-        '<h3 style="margin:0;font-weight:600;font-size:.95rem">' + esc(m.name) + '</h3>' +
-        '<span class="muted" style="margin-left:auto;font-size:.78rem">' + items.length + '</span>' +
-      '</div>' +
+    return '<div class="market-card' + (picked ? " armed" : "") + '" data-drop="' + m.id + '">' +
+      '<button type="button" class="market-head" data-act="assign" data-id="' + m.id + '">' +
+        '<span class="dot" style="background:' + m.color + '"></span>' +
+        '<span class="mname">' + esc(m.name) + '</span>' +
+        '<span class="muted">' + (picked ? "hierhin" : items.length) + '</span>' +
+      '</button>' +
       '<div class="market-items">' + (items.length ? items.map(function(i){
         return '<div class="market-item">' +
           '<span>' + esc(i.name) + '</span>' +
           '<button type="button" data-act="remove-item" data-id="' + i.id + '" class="x">✕</button>' +
         '</div>';
-      }).join("") : '<p class="empty" style="padding:8px 14px;margin:0;font-size:.85rem">Produkte reinziehen</p>') +
+      }).join("") : '<p class="empty" style="padding:8px 14px;margin:0;font-size:.85rem">Noch nichts</p>') +
       '</div></div>';
   }).join("");
+
+  var hint = $("#sammel-hint");
+  if(hint) hint.textContent = picked
+    ? "„" + picked.name + "“ ausgewählt – jetzt einen Markt antippen."
+    : "Produkt antippen, dann den Markt antippen. Am Rechner geht auch Ziehen.";
 }
 
 /* ---------- Märkte: Produkte zuordnen ---------- */
@@ -468,7 +478,30 @@ document.addEventListener("click", function(e){
     render();
   }
 
-  else if(act === "cat-del"){ drop("catalog", id); renderCatalog(); }
+  else if(act === "cat-del"){
+    if(ui.picked === id) ui.picked = null;
+    drop("catalog", id); render();
+  }
+
+  else if(act === "cat-clear"){
+    if(!confirm("Alle " + db.catalog.length + " Produkte aus der Sammelliste löschen? Die Einkaufsliste bleibt.")) return;
+    ui.picked = null;
+    db.catalog.slice().forEach(function(c){ drop("catalog", c.id); });
+    render();
+  }
+
+  else if(act === "pick"){
+    ui.picked = (ui.picked === id) ? null : id;
+    renderCatalog(); renderSammelMarkets();
+  }
+
+  else if(act === "assign"){
+    if(!ui.picked) return;
+    var cat = db.catalog.filter(function(c){ return c.id === ui.picked; })[0];
+    ui.picked = null;
+    if(cat) addToMarket(cat.name, id);
+    render();
+  }
 
 
   else if(act === "remove-item"){ drop("items", id); render(); }
@@ -612,9 +645,7 @@ document.addEventListener("drop", function(e){
     if(it){ it.marketId = z.dataset.drop || null; put("items", it); }
   } else if(dragType === "product" && z.dataset.drop){
     var cat = db.catalog.filter(function(c){ return c.id === dragId; })[0];
-    if(cat){
-      put("items", {id:uid(), name:cat.name, qty:"", marketId:z.dataset.drop, done:false, createdAt:Date.now()});
-    }
+    if(cat) addToMarket(cat.name, z.dataset.drop);
   }
   dragId = null; dragType = null;
   if(zone){ zone.classList.remove("over"); zone = null; }
