@@ -61,9 +61,14 @@ button,input,select,textarea{font:inherit;color:inherit}
 .brand{display:flex;align-items:center;gap:11px}
 .brand svg{flex:none;display:block}
 .sub{font-size:.82rem;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.tabs{display:flex;gap:4px;background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:4px}
-.tabs button{flex:1;border:0;background:transparent;color:var(--ink-2);padding:8px 6px;border-radius:8px;font-weight:600;font-size:.88rem;cursor:pointer}
-.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tabs{display:flex;gap:4px;background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:4px;position:relative}
+.tabs button{flex:1;border:0;background:transparent;color:var(--ink-2);padding:8px 6px;border-radius:8px;font-weight:600;font-size:.88rem;cursor:pointer;
+  position:relative;z-index:1;transition:color .18s ease}
+.tabs button[aria-selected="true"]{color:var(--ink)}
+/* wandert unter den gewaehlten Reiter, statt dass der Hintergrund umspringt */
+.glider{position:absolute;top:4px;bottom:4px;left:0;width:0;border-radius:8px;
+  background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.08);
+  transition:transform .26s cubic-bezier(.4,0,.2,1),width .26s cubic-bezier(.4,0,.2,1)}
 
 /* generic */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
@@ -110,7 +115,7 @@ li.item:first-child{border-top:0}
 @media (hover:hover) and (pointer:fine){.grip{display:block}}
 .tick{flex:none;width:21px;height:21px;border-radius:6px;border:1.5px solid var(--line-2);background:var(--surface);cursor:pointer;display:grid;place-items:center;padding:0}
 .tick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent)}
-.tick svg{opacity:0}
+.tick svg{opacity:0;transition:opacity .14s ease}
 .tick[aria-pressed="true"] svg{opacity:1;color:var(--accent-ink)}
 .itemname{flex:1 1 130px;min-width:0;overflow-wrap:anywhere;font-weight:500}
 .qty{font-size:.78rem;color:var(--ink-2);background:var(--surface-2);border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -177,13 +182,45 @@ body.dragging-now{cursor:grabbing;user-select:none;-webkit-user-select:none}
   40%{transform:scale(1.035)}
   100%{transform:scale(1)}
 }
+/* Kleine Rueckmeldungen: was neu ist, kommt kurz herein, was man
+   umstellt, quittiert das einmal. Alles ueber transform und opacity. */
+.fresh{animation:fresh .3s cubic-bezier(.2,1.3,.5,1)}
+@keyframes fresh{
+  from{opacity:0;transform:scale(.82)}
+  to{opacity:1;transform:scale(1)}
+}
+li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezier(.3,1.2,.5,1)}
+@keyframes freshRow{
+  from{opacity:0;transform:translateY(-7px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.dot.pulse{animation:pulse .42s cubic-bezier(.3,1.4,.5,1)}
+@keyframes pulse{
+  35%{transform:scale(1.55);border-radius:50%}
+  100%{transform:scale(1)}
+}
+.entering{animation:panelIn .24s cubic-bezier(.25,.6,.3,1)}
+@keyframes panelIn{
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.tick svg{transition:transform .16s cubic-bezier(.3,1.5,.5,1)}
+.tick[aria-pressed="false"] svg{transform:scale(.4)}
+
 @media (prefers-reduced-motion:no-preference){
   .pill,.chip,.market-card{transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease}
   .tick{transition:background-color .12s ease,border-color .12s ease}
+  .sw{transition:transform .14s cubic-bezier(.3,1.4,.5,1),border-color .14s ease}
+  .sw:hover{transform:scale(1.18)}
+  .btn{transition:border-color .14s ease,background-color .14s ease,transform .1s ease}
+  .btn:active{transform:scale(.96)}
+  .x:hover{transform:scale(1.15)}
+  .x{transition:color .12s ease,background-color .12s ease,transform .12s ease}
 }
 @media (prefers-reduced-motion:reduce){
   .dragfly{box-shadow:none}
-  .market-card.caught{animation:none}
+  .fresh,.dot.pulse,.entering,.market-card.caught{animation:none}
+  .glider{transition:none}
 }
 </style>
 </head>
@@ -206,6 +243,7 @@ body.dragging-now{cursor:grabbing;user-select:none;-webkit-user-select:none}
       </div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Ansicht">
+      <span class="glider" id="glider" aria-hidden="true"></span>
       <button role="tab" id="tab-liste" data-tab="liste" aria-selected="true">Einkaufsliste</button>
       <button role="tab" id="tab-sammel" data-tab="sammel" aria-selected="false">Sammelliste</button>
       <button role="tab" id="tab-maerkte" data-tab="maerkte" aria-selected="false">Märkte</button>
@@ -257,6 +295,6 @@ body.dragging-now{cursor:grabbing;user-select:none;-webkit-user-select:none}
   <footer>Marktliste · offline im Browser gespeichert</footer>
 </div>
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

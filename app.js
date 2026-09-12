@@ -34,7 +34,11 @@ db.markets = db.markets || []; db.catalog = db.catalog || []; db.items = db.item
 db.markets.forEach(function(m, i){ if(typeof m.order !== "number") m.order = i; });
 db.items.forEach(function(it, i){ if(typeof it.createdAt !== "number") it.createdAt = i; });
 
-var ui = {tab:"liste", filter:"all", picked:null};
+var ui = {tab:"liste", filter:"all", picked:null, fresh:null};
+
+/* Was gerade neu dazukam, wird beim naechsten Aufbau einmal hervorgehoben.
+   Die Markierung gilt nur fuer diesen einen Durchlauf. */
+function isFresh(id){ return ui.fresh === id ? " fresh" : ""; }
 
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e){} }
 function market(id){ return db.markets.filter(function(m){return m.id===id;})[0] || null; }
@@ -58,7 +62,9 @@ function addToMarket(name, marketId){
     return i.marketId === marketId && i.name.toLowerCase() === name.toLowerCase() && !i.done;
   });
   if(dup) return;
-  put("items", {id:uid(), name:name, marketId:marketId, done:false, createdAt:Date.now()});
+  var it = {id:uid(), name:name, marketId:marketId, done:false, createdAt:Date.now()};
+  put("items", it);
+  ui.fresh = it.id;
 }
 
 /* ---------- Abgleich ueber Firebase ---------- */
@@ -250,7 +256,7 @@ function renderChips(){
 }
 
 function itemRow(it){
-  return '<li class="item' + (it.done ? " done" : "") + '" data-drag="item" data-id="' + it.id + '">' +
+  return '<li class="item' + (it.done ? " done" : "") + isFresh(it.id) + '" data-drag="item" data-id="' + it.id + '">' +
     '<button type="button" class="tick" data-act="toggle" data-id="' + it.id + '" aria-pressed="' + it.done +
       '" aria-label="' + esc(it.name) + ' abhaken">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -327,7 +333,7 @@ function renderCatalog(){
   var sorted = db.catalog.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
   host.innerHTML = '<div class="pills">' + sorted.map(function(c){
     var on = ui.picked === c.id;
-    return '<span class="pill' + (on ? " picked" : "") + '" data-drag="product" data-id="' + c.id + '">' +
+    return '<span class="pill' + (on ? " picked" : "") + isFresh(c.id) + '" data-drag="product" data-id="' + c.id + '">' +
       '<button type="button" class="pillname" data-act="pick" data-id="' + c.id + '" aria-pressed="' + on + '">' +
         esc(c.name) + '</button>' +
       '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
@@ -352,7 +358,7 @@ function renderSammelMarkets(){
         '<span class="muted">' + (picked ? "hierhin" : items.length) + '</span>' +
       '</button>' +
       '<div class="market-items">' + (items.length ? items.map(function(i){
-        return '<div class="market-item">' +
+        return '<div class="market-item' + isFresh(i.id) + '">' +
           '<span>' + esc(i.name) + '</span>' +
           '<button type="button" data-act="remove-item" data-id="' + i.id + '" class="x">✕</button>' +
         '</div>';
@@ -384,7 +390,7 @@ function renderMarkets(){
 
   host.innerHTML = '<div class="mrow-list">' + db.markets.map(function(m){
     var n = db.items.filter(function(i){ return i.marketId === m.id; }).length;
-    return '<div class="mrow">' +
+    return '<div class="mrow' + isFresh(m.id) + '">' +
       '<span class="dot" style="background:' + m.color + '"></span>' +
       '<input type="text" value="' + esc(m.name) + '" data-act="rename" data-id="' + m.id + '" aria-label="Name des Markts">' +
       '<span class="swatches">' + COLORS.map(function(c){
@@ -460,14 +466,39 @@ function render(){
   if(ui.tab === "liste"){ renderChips(); renderGroups(); }
   if(ui.tab === "sammel"){ renderCatalog(); renderSammelMarkets(); }
   if(ui.tab === "maerkte"){ renderMarkets(); renderSync(); }
+  ui.fresh = null;
+}
+
+/* Der Balken unter dem gewaehlten Reiter wandert mit, statt hart
+   umzuspringen. Position und Breite kommen vom Knopf selbst. */
+var gliderPlaced = false;
+function moveGlider(){
+  var g = $("#glider"), b = $("#tab-" + ui.tab);
+  if(!g || !b) return;
+  if(!gliderPlaced) g.style.transition = "none";   /* nicht beim Laden einfahren */
+  g.style.width = b.offsetWidth + "px";
+  g.style.transform = "translateX(" + b.offsetLeft + "px)";
+  if(!gliderPlaced){
+    void g.offsetWidth;
+    g.style.transition = "";
+    gliderPlaced = true;
+  }
 }
 
 function setTab(name){
+  var same = ui.tab === name;
   ui.tab = name;
   ["liste","sammel","maerkte"].forEach(function(t){
-    $("#panel-" + t).hidden = (t !== name);
+    var panel = $("#panel-" + t);
+    panel.hidden = (t !== name);
     $("#tab-" + t).setAttribute("aria-selected", String(t === name));
+    if(t === name && !same){
+      panel.classList.remove("entering");
+      void panel.offsetWidth;              /* Animation neu anstossen */
+      panel.classList.add("entering");
+    }
   });
+  moveGlider();
   render();
 }
 
@@ -540,7 +571,20 @@ document.addEventListener("click", function(e){
 
   else if(act === "color"){
     var mk = market(id);
-    if(mk){ mk.color = t.dataset.color; put("markets", mk); renderMarkets(); }
+    if(!mk || mk.color === t.dataset.color) return;
+    mk.color = t.dataset.color;
+    put("markets", mk);
+    /* Nur den Punkt umfaerben. Ein Neuaufbau der Zeile wuerde die
+       Animation im selben Moment wieder wegwerfen. */
+    var row = t.closest(".mrow");
+    var dot = row.querySelector(".dot");
+    dot.style.background = mk.color;
+    row.querySelectorAll(".sw").forEach(function(sw){
+      sw.setAttribute("aria-pressed", String(sw.dataset.color === mk.color));
+    });
+    dot.classList.remove("pulse");
+    void dot.offsetWidth;
+    dot.classList.add("pulse");
   }
   else if(act === "del-market"){
     var m = market(id);
@@ -626,17 +670,21 @@ $("#cat-form").addEventListener("submit", function(e){
   var name = $("#cat-name").value.trim();
   if(!name) return;
   if(!db.catalog.some(function(c){ return c.name.toLowerCase() === name.toLowerCase(); })){
-    put("catalog", {id:uid(), name:name});
+    var fresh = {id:uid(), name:name};
+    put("catalog", fresh);
+    ui.fresh = fresh.id;
   }
   $("#cat-name").value = "";
-  renderCatalog(); $("#cat-name").focus();
+  render(); $("#cat-name").focus();
 });
 
 $("#market-form").addEventListener("submit", function(e){
   e.preventDefault();
   var name = $("#market-name").value.trim();
   if(!name) return;
-  put("markets", {id:uid(), name:name, color:COLORS[db.markets.length % COLORS.length], order:db.markets.length});
+  var mk = {id:uid(), name:name, color:COLORS[db.markets.length % COLORS.length], order:db.markets.length};
+  put("markets", mk);
+  ui.fresh = mk.id;
   $("#market-name").value = "";
   render();
 });
@@ -644,6 +692,9 @@ $("#market-form").addEventListener("submit", function(e){
 window.addEventListener("hashchange", function(){
   if(SYNC.configured() && !SYNC.isOn()) SYNC.start();
 });
+
+window.addEventListener("resize", moveGlider);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(moveGlider);
 
 /* ---------- Ziehen mit Zeigergeraet: Maus, Finger, Stift ----------
    Kein HTML5-Drag: das feuert auf Touch nicht. Ein Klon haengt an der
