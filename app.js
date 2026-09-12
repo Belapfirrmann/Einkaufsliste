@@ -150,7 +150,14 @@ var SYNC = (function(){
       set(s.val() ? "online" : "offline");
     });
     ref.on("value", onRemote, function(err){
-      set("error", "Kein Zugriff auf die Liste: " + (err && err.message ? err.message : err));
+      var code = (err && (err.code || err.message) || "") + "";
+      /* Der haeufigste Fall: die Datenbank steht noch im gesperrten Modus,
+         in dem auch angemeldete Geraete nichts lesen duerfen. */
+      set("error", /permission|denied/i.test(code)
+        ? "Die Datenbank lässt niemanden rein. In der Firebase-Konsole unter Realtime Database "
+          + "auf den Reiter Regeln gehen und dort .read und .write auf \"auth != null\" setzen, "
+          + "dann Veröffentlichen. Die fertigen Regeln stehen in der README."
+        : "Kein Zugriff auf die Liste: " + (err && err.message ? err.message : err));
     });
   }
 
