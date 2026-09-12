@@ -250,7 +250,7 @@ function renderChips(){
 }
 
 function itemRow(it){
-  return '<li class="item' + (it.done ? " done" : "") + '" data-id="' + it.id + '">' +
+  return '<li class="item' + (it.done ? " done" : "") + '" data-drag="item" data-id="' + it.id + '">' +
     '<button type="button" class="tick" data-act="toggle" data-id="' + it.id + '" aria-pressed="' + it.done +
       '" aria-label="' + esc(it.name) + ' abhaken">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -274,21 +274,45 @@ function renderGroups(){
     host.innerHTML = groups.map(function(g){
       var done = g.items.filter(function(i){ return i.done; }).length;
       var sorted = g.items.slice().sort(function(a,b){ return (a.done?1:0) - (b.done?1:0); });
-      return '<section class="group" data-drop="' + g.id + '">' +
+      return '<section class="group" data-drop="' + g.id + '" data-group="' + (g.id||"none") + '">' +
         '<div class="strip" style="background:' + g.color + '"></div>' +
         '<div class="group-head"><span class="dot" style="background:' + g.color + '"></span>' +
           '<h2>' + esc(g.name) + '</h2>' +
           '<span class="count">' + done + '/' + g.items.length + '</span>' +
-          (done ? '<button type="button" class="btn ghost small" data-act="clear-done" data-id="' + (g.id||"none") + '">Erledigte weg</button>' : "") +
+          '<span class="slot">' + (done ? '<button type="button" class="btn ghost small" data-act="clear-done" data-id="' + (g.id||"none") + '">Erledigte weg</button>' : "") + '</span>' +
         '</div>' +
         (sorted.length ? '<ul class="items">' + sorted.map(itemRow).join("") + '</ul>'
                        : '<p class="empty">Noch nichts für ' + esc(g.name) + '.</p>') +
       '</section>';
     }).join("");
   }
+  renderCounts();
+}
+
+/* Zaehler und die beiden Aufraeum-Knoepfe nachziehen, ohne die Zeilen
+   neu zu bauen: sonst springt beim Abhaken die Liste unter dem Finger. */
+function renderCounts(){
+  groupsFor().forEach(function(g){
+    var sec = document.querySelector('[data-group="' + (g.id || "none") + '"]');
+    if(!sec) return;
+    var done = g.items.filter(function(i){ return i.done; }).length;
+    sec.querySelector(".count").textContent = done + "/" + g.items.length;
+    var slot = sec.querySelector(".slot");
+    var has = !!slot.firstChild;
+    if(done && !has){
+      slot.innerHTML = '<button type="button" class="btn ghost small" data-act="clear-done" data-id="' + (g.id||"none") + '">Erledigte weg</button>';
+    } else if(!done && has){
+      slot.innerHTML = "";
+    }
+  });
   var anyDone = db.items.some(function(i){ return i.done; });
-  $("#liste-actions").innerHTML = anyDone
-    ? '<button type="button" class="btn" data-act="clear-done" data-id="all">Alle erledigten entfernen</button>' : "";
+  var host = $("#liste-actions");
+  var shown = !!host.firstChild;
+  if(anyDone && !shown){
+    host.innerHTML = '<button type="button" class="btn" data-act="clear-done" data-id="all">Alle erledigten entfernen</button>';
+  } else if(!anyDone && shown){
+    host.innerHTML = "";
+  }
 }
 
 /* ---------- Sammelliste: eingeben + Märkte zuordnen ---------- */
@@ -303,7 +327,7 @@ function renderCatalog(){
   var sorted = db.catalog.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
   host.innerHTML = '<div class="pills">' + sorted.map(function(c){
     var on = ui.picked === c.id;
-    return '<span class="pill' + (on ? " picked" : "") + '" draggable="true" data-id="' + c.id + '" data-drag-product="true">' +
+    return '<span class="pill' + (on ? " picked" : "") + '" data-drag="product" data-id="' + c.id + '">' +
       '<button type="button" class="pillname" data-act="pick" data-id="' + c.id + '" aria-pressed="' + on + '">' +
         esc(c.name) + '</button>' +
       '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
@@ -339,7 +363,7 @@ function renderSammelMarkets(){
   var hint = $("#sammel-hint");
   if(hint) hint.textContent = picked
     ? "„" + picked.name + "“ ausgewählt – jetzt einen Markt antippen."
-    : "Produkt antippen, dann den Markt antippen. Am Rechner geht auch Ziehen.";
+    : "Produkt antippen, dann den Markt antippen. Oder gedrückt halten und rüberziehen.";
 }
 
 /* ---------- Märkte: Produkte zuordnen ---------- */
@@ -465,7 +489,15 @@ document.addEventListener("click", function(e){
 
   else if(act === "toggle"){
     var it = item(id);
-    if(it){ it.done = !it.done; put("items", it); render(); }
+    if(!it) return;
+    it.done = !it.done;
+    put("items", it);
+    /* Nur die angefasste Zeile umschalten. Ein voller Neuaufbau der Liste
+       ruckelt sichtbar und liesse die Zeile unter dem Finger wegspringen. */
+    var li = t.closest("li.item");
+    if(li) li.classList.toggle("done", it.done);
+    t.setAttribute("aria-pressed", String(it.done));
+    renderHead(); renderChips(); renderCounts();
   }
   else if(act === "del-item"){ drop("items", id); render(); }
 
@@ -613,44 +645,163 @@ window.addEventListener("hashchange", function(){
   if(SYNC.configured() && !SYNC.isOn()) SYNC.start();
 });
 
-/* ---------- Drag und Drop: Produkte in Märkte ---------- */
-var dragId = null, dragType = null, zone = null;
-document.addEventListener("dragstart", function(e){
-  var row = e.target.closest(".item");
-  var pill = e.target.closest("[data-drag-product]");
-  if(row){ dragId = row.dataset.id; dragType = "item"; row.classList.add("dragging"); }
-  else if(pill){ dragId = pill.dataset.id; dragType = "product"; pill.classList.add("dragging"); }
-  else return;
-  try { e.dataTransfer.setData("text/plain", dragId); e.dataTransfer.effectAllowed = "move"; } catch(err){}
-});
-document.addEventListener("dragend", function(){
-  dragId = null; dragType = null;
-  document.querySelectorAll(".dragging").forEach(function(n){ n.classList.remove("dragging"); });
-  if(zone){ zone.classList.remove("over"); zone = null; }
-});
-document.addEventListener("dragover", function(e){
-  if(!dragId) return;
-  var z = e.target.closest("[data-drop]");
-  if(!z) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = "move";
-  if(zone !== z){ if(zone) zone.classList.remove("over"); zone = z; z.classList.add("over"); }
-});
-document.addEventListener("drop", function(e){
-  var z = e.target.closest("[data-drop]");
-  if(!z || !dragId) return;
-  e.preventDefault();
-  if(dragType === "item" && z.dataset.drop){
-    var it = item(dragId);
-    if(it){ it.marketId = z.dataset.drop || null; put("items", it); }
-  } else if(dragType === "product" && z.dataset.drop){
-    var cat = db.catalog.filter(function(c){ return c.id === dragId; })[0];
-    if(cat) addToMarket(cat.name, z.dataset.drop);
+/* ---------- Ziehen mit Zeigergeraet: Maus, Finger, Stift ----------
+   Kein HTML5-Drag: das feuert auf Touch nicht. Ein Klon haengt an der
+   Zeigerposition und laeuft ihr per Feder hinterher, die Neigung kommt aus
+   der Restdistanz. Alles nur transform, damit kein Layout neu rechnet. */
+var DRAG = (function(){
+  var SLOP = 7;          /* so weit ziehen, bis aus Tippen ein Ziehen wird */
+  var STIFF = 0.28;      /* Federhaerte des Nachlaufs */
+  var TILT = 1.1;        /* Grad Neigung je Pixel Rueckstand */
+
+  var st = null, frame = 0;
+
+  function zoneAt(x, y){
+    var el = document.elementFromPoint(x, y);
+    return el ? el.closest("[data-drop]") : null;
   }
-  dragId = null; dragType = null;
-  if(zone){ zone.classList.remove("over"); zone = null; }
-  render();
-});
+
+  function tick(){
+    frame = 0;
+    if(!st || !st.active) return;
+    st.x += (st.tx - st.x) * STIFF;
+    st.y += (st.ty - st.y) * STIFF;
+    var lag = st.tx - st.x;
+    var rot = Math.max(-16, Math.min(16, lag * TILT));
+    st.ghost.style.transform =
+      "translate3d(" + (st.x - st.gx) + "px," + (st.y - st.gy) + "px,0) rotate(" + rot + "deg)";
+    if(Math.abs(lag) > 0.4 || Math.abs(st.ty - st.y) > 0.4) queue();
+  }
+  function queue(){ if(!frame) frame = requestAnimationFrame(tick); }
+
+  function begin(){
+    /* Erst jetzt einfangen. Frueher gesetzt, landet auch ein blosser Klick
+       auf dem Traeger statt auf dem Knopf darin und das Antippen faellt aus. */
+    try { st.node.setPointerCapture(st.pid); } catch(e){}
+    var r = st.node.getBoundingClientRect();
+    var g = st.node.cloneNode(true);
+    g.className = st.node.className + " dragfly";
+    g.style.cssText = "position:fixed;left:" + r.left + "px;top:" + r.top + "px;width:" + r.width + "px;margin:0";
+    document.body.appendChild(g);
+    st.ghost = g;
+    st.gx = st.x; st.gy = st.y;      /* Zeigerposition beim Aufnehmen */
+    st.active = true;
+    st.node.classList.add("lifted");
+    document.body.classList.add("dragging-now");
+    queue();
+  }
+
+  function land(zone, done){
+    var g = st.ghost, node = st.node;
+    if(!g) return done();
+    if(zone){
+      var r = zone.getBoundingClientRect();
+      var gr = g.getBoundingClientRect();
+      g.style.transition = "transform .22s cubic-bezier(.4,0,.2,1),opacity .22s ease";
+      g.style.transform =
+        "translate3d(" + (r.left + r.width / 2 - gr.left - gr.width / 2) + "px," +
+        (r.top + Math.min(26, r.height / 2) - gr.top) + "px,0) scale(.55)";
+      g.style.opacity = "0";
+      zone.classList.add("caught");
+      setTimeout(function(){ zone.classList.remove("caught"); }, 360);
+    } else {
+      g.style.transition = "transform .3s cubic-bezier(.2,1.3,.5,1)";
+      g.style.transform = "translate3d(0,0,0) rotate(0deg)";
+    }
+    setTimeout(function(){
+      if(g.parentNode) g.parentNode.removeChild(g);
+      node.classList.remove("lifted");
+      done();
+    }, zone ? 210 : 290);
+  }
+
+  /* Nach dem Loslassen schickt der Browser noch einen Klick auf das
+     aufgenommene Element. Ohne das hier waehlt ein Zug das Produkt zusaetzlich aus. */
+  function swallowClick(){
+    var eat = function(ev){ ev.stopPropagation(); ev.preventDefault(); done(); };
+    var done = function(){
+      clearTimeout(timer);
+      window.removeEventListener("click", eat, true);
+    };
+    var timer = setTimeout(done, 350);
+    window.addEventListener("click", eat, true);
+  }
+
+  function stop(){
+    if(frame){ cancelAnimationFrame(frame); frame = 0; }
+    document.body.classList.remove("dragging-now");
+    if(st && st.zone) st.zone.classList.remove("over");
+  }
+
+  document.addEventListener("pointerdown", function(e){
+    if(e.button != null && e.button !== 0) return;
+    /* Nur echte Bedienelemente sperren. Der Produktname ist selbst ein
+       Knopf und muss greifbar bleiben, sonst laesst sich nichts ziehen. */
+    if(e.target.closest(".drop, .x, .tick, .btn, select, input, textarea, a")) return;
+    var node = e.target.closest("[data-drag]");
+    if(!node) return;
+    st = {node:node, kind:node.dataset.drag, id:node.dataset.id,
+          x:e.clientX, y:e.clientY, tx:e.clientX, ty:e.clientY,
+          x0:e.clientX, y0:e.clientY, active:false, zone:null, pid:e.pointerId,
+          touch:e.pointerType === "touch", hold:0};
+    /* Am Finger erst nach kurzem Halten aufnehmen, sonst frisst das Ziehen
+       jeden Wischer, mit dem die Seite eigentlich gescrollt werden soll. */
+    if(st.touch) st.hold = setTimeout(function(){
+      if(!st || st.active) return;
+      st.hold = 0;
+      begin();
+      if(navigator.vibrate) try { navigator.vibrate(12); } catch(err){}
+    }, 220);
+  });
+
+  document.addEventListener("pointermove", function(e){
+    if(!st || e.pointerId !== st.pid) return;
+    st.tx = e.clientX; st.ty = e.clientY;
+    if(!st.active){
+      var far = Math.abs(e.clientX - st.x0) >= SLOP || Math.abs(e.clientY - st.y0) >= SLOP;
+      if(!far) return;
+      if(st.touch){ clearTimeout(st.hold); st = null; return; }  /* das war Scrollen */
+      begin();
+    }
+    e.preventDefault();
+    var z = zoneAt(e.clientX, e.clientY);
+    if(z !== st.zone){
+      if(st.zone) st.zone.classList.remove("over");
+      if(z) z.classList.add("over");
+      st.zone = z;
+    }
+    queue();
+  });
+
+  function finish(e){
+    if(!st || e.pointerId !== st.pid) return;
+    var s = st;
+    clearTimeout(s.hold);
+    st = null;
+    if(!s.active){ stop(); return; }          /* war nur ein Tippen */
+    swallowClick();
+    var zone = s.zone;
+    st = s;                                    /* land() braucht den Zustand */
+    land(zone, function(){
+      st = null;
+      if(!zone) return;
+      var target = zone.dataset.drop;
+      if(s.kind === "product"){
+        var cat = db.catalog.filter(function(c){ return c.id === s.id; })[0];
+        if(cat) addToMarket(cat.name, target);
+      } else if(s.kind === "item"){
+        var it = item(s.id);
+        if(it){ it.marketId = target || null; put("items", it); }
+      }
+      render();
+    });
+    stop();
+  }
+  document.addEventListener("pointerup", finish);
+  document.addEventListener("pointercancel", finish);
+
+  return {busy: function(){ return !!(st && st.active); }};
+})();
 
 setTab("liste");
 SYNC.start();
