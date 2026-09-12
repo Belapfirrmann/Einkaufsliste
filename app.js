@@ -369,7 +369,7 @@ function renderSammelMarkets(){
   var hint = $("#sammel-hint");
   if(hint) hint.textContent = picked
     ? "„" + picked.name + "“ ausgewählt – jetzt einen Markt antippen."
-    : "Produkt antippen, dann den Markt antippen. Oder gedrückt halten und rüberziehen.";
+    : "Produkt in einen Markt ziehen. Oder antippen und dann den Markt antippen.";
 }
 
 /* ---------- Märkte: Produkte zuordnen ---------- */
@@ -791,18 +791,14 @@ var DRAG = (function(){
     if(e.target.closest(".drop, .x, .tick, .btn, select, input, textarea, a")) return;
     var node = e.target.closest("[data-drag]");
     if(!node) return;
+    /* Am Finger ist nur die Sammelliste ziehbar. Ihre Kacheln stehen auf
+       touch-action:none, der Browser scrollt dort also nicht mit und das
+       Ziehen kann sofort losgehen. Die Zeilen der Einkaufsliste fuellen die
+       ganze Breite, dort gehoert der Wisch dem Scrollen. */
+    if(e.pointerType === "touch" && node.dataset.drag !== "product") return;
     st = {node:node, kind:node.dataset.drag, id:node.dataset.id,
           x:e.clientX, y:e.clientY, tx:e.clientX, ty:e.clientY,
-          x0:e.clientX, y0:e.clientY, active:false, zone:null, pid:e.pointerId,
-          touch:e.pointerType === "touch", hold:0};
-    /* Am Finger erst nach kurzem Halten aufnehmen, sonst frisst das Ziehen
-       jeden Wischer, mit dem die Seite eigentlich gescrollt werden soll. */
-    if(st.touch) st.hold = setTimeout(function(){
-      if(!st || st.active) return;
-      st.hold = 0;
-      begin();
-      if(navigator.vibrate) try { navigator.vibrate(12); } catch(err){}
-    }, 220);
+          x0:e.clientX, y0:e.clientY, active:false, zone:null, pid:e.pointerId};
   });
 
   document.addEventListener("pointermove", function(e){
@@ -811,7 +807,6 @@ var DRAG = (function(){
     if(!st.active){
       var far = Math.abs(e.clientX - st.x0) >= SLOP || Math.abs(e.clientY - st.y0) >= SLOP;
       if(!far) return;
-      if(st.touch){ clearTimeout(st.hold); st = null; return; }  /* das war Scrollen */
       begin();
     }
     e.preventDefault();
@@ -827,7 +822,6 @@ var DRAG = (function(){
   function finish(e){
     if(!st || e.pointerId !== st.pid) return;
     var s = st;
-    clearTimeout(s.hold);
     st = null;
     if(!s.active){ stop(); return; }          /* war nur ein Tippen */
     swallowClick();
