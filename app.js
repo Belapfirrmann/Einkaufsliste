@@ -24,21 +24,14 @@ function seed(){
     {id:"m4", name:"Bauhaus", color:COLORS[4], order:3}
   ];
   var cat = [
-    ["Milch","m1"],["Butter","m1"],["Eier","m1"],["Vollkornbrot","m1"],["Käse","m1"],
-    ["Kaffeebohnen","m1"],["Olivenöl","m1"],["Nudeln","m2"],["Haferflocken","m2"],
-    ["Tomaten","m2"],["Bananen","m2"],["Spülmaschinentabs","m2"],
-    ["Zahnpasta","m3"],["Duschgel","m3"],["Waschmittel","m3"],["Taschentücher","m3"],
-    ["Gaffer-Tape","m4"],["Kabelbinder","m4"],["Batterien AA","m4"],["Klebeband","m4"]
-  ].map(function(p){ return {id:uid(), name:p[0], marketId:p[1]}; });
+    "Milch","Butter","Eier","Vollkornbrot","Käse",
+    "Kaffeebohnen","Olivenöl","Nudeln","Haferflocken",
+    "Tomaten","Bananen","Spülmaschinentabs",
+    "Zahnpasta","Duschgel","Waschmittel","Taschentücher",
+    "Gaffer-Tape","Kabelbinder","Batterien AA","Klebeband"
+  ].map(function(n){ return {id:uid(), name:n}; });
   var t = Date.now();
-  var items = [
-    ["Milch","2 l","m1",false],["Kaffeebohnen","","m1",false],["Käse","","m1",true],
-    ["Bananen","1 Hand","m2",false],["Spülmaschinentabs","","m2",false],
-    ["Zahnpasta","2","m3",false],["Gaffer-Tape","3 Rollen","m4",false],
-    ["Kabelbinder","",null,false]
-  ].map(function(i, n){
-    return {id:uid(), name:i[0], qty:i[1], marketId:i[2], done:i[3], createdAt:t + n};
-  });
+  var items = [];
   return {markets:m, catalog:cat, items:items};
 }
 
@@ -50,7 +43,7 @@ db.markets = db.markets || []; db.catalog = db.catalog || []; db.items = db.item
 db.markets.forEach(function(m, i){ if(typeof m.order !== "number") m.order = i; });
 db.items.forEach(function(it, i){ if(typeof it.createdAt !== "number") it.createdAt = i; });
 
-var ui = {tab:"liste", filter:"all", search:""};
+var ui = {tab:"liste", filter:"all"};
 
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e){} }
 function market(id){ return db.markets.filter(function(m){return m.id===id;})[0] || null; }
@@ -172,7 +165,6 @@ var SYNC = (function(){
     db.catalog = toList(v.catalog, function(a,b){ return a.name.localeCompare(b.name,"de"); });
     db.items   = toList(v.items,   function(a,b){ return (a.createdAt||0) - (b.createdAt||0); });
     db.items.forEach(function(i){ i.done = !!i.done; i.qty = i.qty || ""; i.marketId = i.marketId || null; });
-    db.catalog.forEach(function(c){ c.marketId = c.marketId || null; });
     applying = false;
     save(); render();
   }
@@ -233,15 +225,7 @@ var SYNC = (function(){
   };
 })();
 
-/* ---------- Einkaufsliste ---------- */
-function marketOptions(sel, nullLabel){
-  var html = '<option value="">' + (nullLabel || "Ohne Markt") + '</option>';
-  db.markets.forEach(function(m){
-    html += '<option value="' + m.id + '"' + (m.id===sel ? " selected" : "") + '>' + esc(m.name) + '</option>';
-  });
-  return html;
-}
-
+/* ---------- Einkaufsliste: nur abhaken ---------- */
 function groupsFor(){
   var out = [];
   var loose = db.items.filter(function(i){ return !market(i.marketId); });
@@ -267,19 +251,15 @@ function renderChips(){
 }
 
 function itemRow(it){
-  return '<li class="item' + (it.done ? " done" : "") + '" draggable="true" data-id="' + it.id + '">' +
-    '<span class="grip" aria-hidden="true">⠿</span>' +
+  return '<li class="item' + (it.done ? " done" : "") + '" data-id="' + it.id + '">' +
     '<button type="button" class="tick" data-act="toggle" data-id="' + it.id + '" aria-pressed="' + it.done +
       '" aria-label="' + esc(it.name) + ' abhaken">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     '</button>' +
     '<span class="itemname">' + esc(it.name) + '</span>' +
     (it.qty ? '<span class="qty">' + esc(it.qty) + '</span>' : "") +
-    '<span class="tools">' +
-      '<select class="pick" data-act="move" data-id="' + it.id + '" aria-label="Markt für ' + esc(it.name) + '">' +
-        marketOptions(it.marketId) + '</select>' +
-      '<button type="button" class="x" data-act="del-item" data-id="' + it.id + '" aria-label="' + esc(it.name) + ' entfernen">✕</button>' +
-    '</span></li>';
+    '<button type="button" class="x" data-act="del-item" data-id="' + it.id + '" aria-label="' + esc(it.name) + ' entfernen">✕</button>' +
+    '</li>';
 }
 
 function renderGroups(){
@@ -289,7 +269,7 @@ function renderGroups(){
   });
   var host = $("#groups");
   if(!db.items.length){
-    host.innerHTML = '<div class="card"><p class="empty">Die Liste ist leer. Produkte oben eintragen oder in der Sammelliste auf + tippen.</p></div>';
+    host.innerHTML = '<div class="card"><p class="empty">Die Liste ist leer. Produkte in der Sammelliste einzutragen und in Märkte zuordnen.</p></div>';
   } else if(!groups.length){
     host.innerHTML = '<div class="card"><p class="empty">Für diesen Markt steht nichts an.</p></div>';
   } else {
@@ -313,65 +293,70 @@ function renderGroups(){
     ? '<button type="button" class="btn" data-act="clear-done" data-id="all">Alle erledigten entfernen</button>' : "";
 }
 
-/* ---------- Sammelliste ---------- */
-function onList(name){
-  return db.items.some(function(i){ return i.name.toLowerCase() === name.toLowerCase() && !i.done; });
-}
-
+/* ---------- Sammelliste: nur eingeben ---------- */
 function renderCatalog(){
-  var q = ui.search.trim().toLowerCase();
-  var pool = db.catalog.filter(function(c){ return !q || c.name.toLowerCase().indexOf(q) >= 0; });
-  var buckets = [];
-  db.markets.forEach(function(m){
-    var list = pool.filter(function(c){ return c.marketId === m.id; });
-    if(list.length) buckets.push({name:m.name, color:m.color, list:list});
-  });
-  var loose = pool.filter(function(c){ return !market(c.marketId); });
-  if(loose.length) buckets.push({name:"Ohne Markt", color:"var(--ink-3)", list:loose});
-
   var host = $("#catalog");
-  if(!buckets.length){
-    host.innerHTML = '<p class="empty">' + (q ? 'Nichts gefunden für „' + esc(ui.search) + '“.' : "Die Sammelliste ist leer. Oben ein Produkt merken.") + '</p>';
+  if(!db.catalog.length){
+    host.innerHTML = '<p class="empty">Die Sammelliste ist leer. Oben ein Produkt eintragen.</p>';
     return;
   }
-  host.innerHTML = buckets.map(function(b){
-    return '<div class="cat-group">' +
-      '<div class="cat-head"><span class="dot" style="background:' + b.color + '"></span><h2>' + esc(b.name) + '</h2>' +
-        '<span class="muted" style="margin-left:auto;font-size:.78rem">' + b.list.length + '</span></div>' +
-      '<div class="pills">' + b.list.slice().sort(function(a,c){ return a.name.localeCompare(c.name,"de"); }).map(function(c){
-        var on = onList(c.name);
-        return '<span class="pill' + (on ? " on" : "") + '">' + esc(c.name) +
-          '<select class="pick" data-act="cat-move" data-id="' + c.id + '" aria-label="Markt für ' + esc(c.name) + '">' +
-            marketOptions(c.marketId) + '</select>' +
-          '<button type="button" class="plus" data-act="cat-add" data-id="' + c.id + '" aria-label="' + esc(c.name) +
-            ' auf die Einkaufsliste">' + (on ? "✓" : "+") + '</button>' +
-          '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
-            ' aus der Sammelliste löschen">✕</button>' +
-        '</span>';
-      }).join("") + '</div></div>';
-  }).join("");
+  var sorted = db.catalog.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
+  host.innerHTML = '<div class="pills">' + sorted.map(function(c){
+    return '<span class="pill">' + esc(c.name) +
+      '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
+        ' aus der Sammelliste löschen">✕</button>' +
+    '</span>';
+  }).join("") + '</div>';
 }
 
-/* ---------- Märkte ---------- */
+/* ---------- Märkte: Produkte zuordnen ---------- */
+function marketOptions(sel, nullLabel){
+  var html = '<option value="">' + (nullLabel || "Ohne Markt") + '</option>';
+  db.markets.forEach(function(m){
+    html += '<option value="' + m.id + '"' + (m.id===sel ? " selected" : "") + '>' + esc(m.name) + '</option>';
+  });
+  return html;
+}
+
 function renderMarkets(){
   var host = $("#markets");
   if(!db.markets.length){
-    host.innerHTML = '<p class="empty">Noch keine Märkte. Oben einen anlegen.</p>';
+    host.innerHTML = '<p class="empty">Noch keine Märkte. Unten einen anlegen.</p>';
     return;
   }
-  host.innerHTML = db.markets.map(function(m){
-    var n = db.items.filter(function(i){ return i.marketId === m.id; }).length;
-    return '<div class="mrow">' +
-      '<span class="dot" style="background:' + m.color + '"></span>' +
-      '<input type="text" value="' + esc(m.name) + '" data-act="rename" data-id="' + m.id + '" aria-label="Name des Markts">' +
-      '<span class="swatches">' + COLORS.map(function(c){
-        return '<button type="button" class="sw" style="background:' + c + '" data-act="color" data-id="' + m.id +
-               '" data-color="' + c + '" aria-pressed="' + (c===m.color) + '" aria-label="Farbe ' + c + '"></button>';
-      }).join("") + '</span>' +
-      '<span class="muted" style="font-size:.78rem">' + n + ' auf der Liste</span>' +
-      '<button type="button" class="x" data-act="del-market" data-id="' + m.id + '" aria-label="' + esc(m.name) + ' löschen">✕</button>' +
+
+  var html = '<div class="markets-grid">';
+
+  db.markets.forEach(function(m){
+    var items = db.items.filter(function(i){ return i.marketId === m.id; });
+    html += '<div class="market-card">' +
+      '<div class="market-head">' +
+        '<span class="dot" style="background:' + m.color + '"></span>' +
+        '<input type="text" value="' + esc(m.name) + '" data-act="rename" data-id="' + m.id + '" aria-label="Name des Markts">' +
+        '<button type="button" class="x" data-act="del-market" data-id="' + m.id + '" aria-label="' + esc(m.name) + ' löschen">✕</button>' +
+      '</div>' +
+      '<div class="market-items">' + items.map(function(i){
+        return '<div class="market-item">' +
+          '<span>' + esc(i.name) + '</span>' +
+          (i.qty ? '<span class="muted">' + esc(i.qty) + '</span>' : '') +
+          '<button type="button" data-act="remove-item" data-id="' + i.id + '" class="x">✕</button>' +
+        '</div>';
+      }).join("") + '</div>';
+
+    html += '<div class="add-item-section">' +
+      '<select id="select-' + m.id + '" class="pick-catalog" data-market="' + m.id + '" aria-label="Produkt hinzufügen"><option value="">Produkt wählen</option>';
+    db.catalog.forEach(function(c){
+      html += '<option value="' + c.id + '">' + esc(c.name) + '</option>';
+    });
+    html += '</select>' +
+      '<input type="text" id="qty-' + m.id + '" placeholder="Menge" class="qty-input" data-market="' + m.id + '" aria-label="Menge/Anmerkung">' +
+      '<button type="button" class="btn small" data-act="add-to-market" data-id="' + m.id + '">Hinzufügen</button>' +
+    '</div>' +
     '</div>';
-  }).join("");
+  });
+
+  html += '</div>';
+  host.innerHTML = html;
 }
 
 /* ---------- Geteilte Liste ---------- */
@@ -430,8 +415,6 @@ function renderHead(){
   var mode = SYNC.mode();
   if(mode !== "off") parts.push((SYNC_TEXT[mode] || SYNC_TEXT.off)[0]);
   $("#subline").textContent = parts.join(" · ");
-  $("#add-market").innerHTML = marketOptions($("#add-market").value || "", "Markt wählen");
-  $("#cat-market").innerHTML = marketOptions($("#cat-market").value || "", "Markt wählen");
 }
 
 function render(){
@@ -481,18 +464,21 @@ document.addEventListener("click", function(e){
     render();
   }
 
-  else if(act === "cat-add"){
-    var c = db.catalog.filter(function(x){ return x.id === id; })[0];
-    if(!c) return;
-    if(onList(c.name)){
-      db.items.filter(function(i){ return i.name.toLowerCase() === c.name.toLowerCase() && !i.done; })
-        .forEach(function(i){ drop("items", i.id); });
-    } else {
-      put("items", {id:uid(), name:c.name, qty:"", marketId:c.marketId || null, done:false, createdAt:Date.now()});
-    }
-    renderHead(); renderCatalog();
-  }
   else if(act === "cat-del"){ drop("catalog", id); renderCatalog(); }
+
+  else if(act === "add-to-market"){
+    var sel = $("#select-" + id);
+    var qty = $("#qty-" + id);
+    if(!sel.value) return;
+    var cat = db.catalog.filter(function(c){ return c.id === sel.value; })[0];
+    if(!cat) return;
+    put("items", {id:uid(), name:cat.name, qty:qty.value.trim(), marketId:id, done:false, createdAt:Date.now()});
+    sel.value = "";
+    qty.value = "";
+    render();
+  }
+
+  else if(act === "remove-item"){ drop("items", id); render(); }
 
   else if(act === "color"){
     var mk = market(id);
@@ -502,9 +488,8 @@ document.addEventListener("click", function(e){
     var m = market(id);
     if(!m) return;
     var n = db.items.filter(function(i){ return i.marketId === id; }).length;
-    if(!confirm('„' + m.name + '“ löschen?' + (n ? " " + n + " Produkt(e) landen wieder bei „Ohne Markt“." : ""))) return;
-    db.items.filter(function(i){ return i.marketId === id; }).forEach(function(i){ i.marketId = null; put("items", i); });
-    db.catalog.filter(function(c){ return c.marketId === id; }).forEach(function(c){ c.marketId = null; put("catalog", c); });
+    if(!confirm('„' + m.name + '" löschen?' + (n ? " " + n + " Produkt(e) werden entfernt." : ""))) return;
+    db.items.filter(function(i){ return i.marketId === id; }).forEach(function(i){ drop("items", i.id); });
     drop("markets", id);
     if(ui.filter === id) ui.filter = "all";
     render();
@@ -568,13 +553,7 @@ document.addEventListener("change", function(e){
   var t = e.target.closest("[data-act]");
   if(!t) return;
   var act = t.dataset.act, id = t.dataset.id;
-  if(act === "move"){
-    var it = item(id);
-    if(it){ it.marketId = t.value || null; put("items", it); render(); }
-  } else if(act === "cat-move"){
-    var c = db.catalog.filter(function(x){ return x.id === id; })[0];
-    if(c){ c.marketId = t.value || null; put("catalog", c); renderCatalog(); }
-  } else if(act === "rename"){
+  if(act === "rename"){
     var m = market(id);
     if(!m) return;
     var name = t.value.trim();
@@ -584,25 +563,12 @@ document.addEventListener("change", function(e){
 });
 
 /* ---------- Formulare ---------- */
-$("#add-form").addEventListener("submit", function(e){
-  e.preventDefault();
-  var name = $("#add-name").value.trim();
-  if(!name) return;
-  var mk = $("#add-market").value || null;
-  put("items", {id:uid(), name:name, qty:$("#add-qty").value.trim(), marketId:mk, done:false, createdAt:Date.now()});
-  if($("#add-remember").checked && !db.catalog.some(function(c){ return c.name.toLowerCase() === name.toLowerCase(); })){
-    put("catalog", {id:uid(), name:name, marketId:mk});
-  }
-  $("#add-name").value = ""; $("#add-qty").value = "";
-  render(); $("#add-name").focus();
-});
-
 $("#cat-form").addEventListener("submit", function(e){
   e.preventDefault();
   var name = $("#cat-name").value.trim();
   if(!name) return;
   if(!db.catalog.some(function(c){ return c.name.toLowerCase() === name.toLowerCase(); })){
-    put("catalog", {id:uid(), name:name, marketId:$("#cat-market").value || null});
+    put("catalog", {id:uid(), name:name});
   }
   $("#cat-name").value = "";
   renderCatalog(); $("#cat-name").focus();
@@ -614,46 +580,6 @@ $("#market-form").addEventListener("submit", function(e){
   if(!name) return;
   put("markets", {id:uid(), name:name, color:COLORS[db.markets.length % COLORS.length], order:db.markets.length});
   $("#market-name").value = "";
-  render();
-});
-
-$("#cat-search").addEventListener("input", function(e){
-  ui.search = e.target.value;
-  renderCatalog();
-});
-
-/* ---------- Ziehen und Ablegen ---------- */
-var dragId = null, zone = null;
-document.addEventListener("dragstart", function(e){
-  var row = e.target.closest(".item");
-  if(!row) return;
-  dragId = row.dataset.id;
-  row.classList.add("dragging");
-  try { e.dataTransfer.setData("text/plain", dragId); e.dataTransfer.effectAllowed = "move"; } catch(err){}
-});
-document.addEventListener("dragend", function(){
-  dragId = null;
-  document.querySelectorAll(".dragging").forEach(function(n){ n.classList.remove("dragging"); });
-  if(zone){ zone.classList.remove("over"); zone = null; }
-});
-document.addEventListener("dragover", function(e){
-  if(!dragId) return;
-  var z = e.target.closest("[data-drop]");
-  if(!z) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = "move";
-  if(zone !== z){ if(zone) zone.classList.remove("over"); zone = z; z.classList.add("over"); }
-});
-document.addEventListener("drop", function(e){
-  var z = e.target.closest("[data-drop]");
-  if(!z || !dragId) return;
-  e.preventDefault();
-  if(z.dataset.id !== "all"){
-    var it = item(dragId);
-    if(it){ it.marketId = z.dataset.drop || null; put("items", it); }
-  }
-  dragId = null;
-  if(zone){ zone.classList.remove("over"); zone = null; }
   render();
 });
 
