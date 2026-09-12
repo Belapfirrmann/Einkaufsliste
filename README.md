@@ -40,3 +40,20 @@ Gerät wieder einlesen.
 
 Beim ersten Start ist die Liste mit Beispieldaten gefüllt. „Alles zurücksetzen“
 im Tab „Märkte“ leert sie.
+
+## Als GitHub Page veröffentlichen
+
+Im Repo liegt der Workflow `.github/workflows/pages.yml`, der `index.html` bei
+jedem Push auf diesen Branch veröffentlicht. Pages selbst lässt sich nicht per
+Workflow-Token aktivieren, dieser eine Schalter muss einmal von Hand gesetzt
+werden:
+
+Repo → **Settings** → **Pages** → **Source: GitHub Actions**
+
+Danach unter **Actions** den Workflow „GitHub Pages“ erneut starten
+(*Re-run all jobs*) oder einmal pushen. Die Seite liegt dann unter
+`https://belapfirrmann.github.io/Einkaufsliste/`.
+
+Alternative ohne Workflow: unter **Settings → Pages** als Source
+**Deploy from a branch** wählen, Branch `claude/shopping-list-market-selection-7uk3wo`
+und Ordner `/ (root)`. Dann kann die Workflow-Datei gelöscht werden.
