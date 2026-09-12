@@ -1,0 +1,15 @@
+{
+  "name": "Marktliste",
+  "short_name": "Marktliste",
+  "description": "Einkaufsliste, die jedes Produkt dem Markt zuordnet, in dem es gekauft wird.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F1F3EE",
+  "theme_color": "#16201B",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
