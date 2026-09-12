@@ -257,7 +257,6 @@ function itemRow(it){
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     '</button>' +
     '<span class="itemname">' + esc(it.name) + '</span>' +
-    (it.qty ? '<span class="qty">' + esc(it.qty) + '</span>' : "") +
     '<button type="button" class="x" data-act="del-item" data-id="' + it.id + '" aria-label="' + esc(it.name) + ' entfernen">✕</button>' +
     '</li>';
 }
@@ -326,7 +325,6 @@ function renderSammelMarkets(){
       '<div class="market-items">' + (items.length ? items.map(function(i){
         return '<div class="market-item">' +
           '<span>' + esc(i.name) + '</span>' +
-          (i.qty ? '<span class="muted">' + esc(i.qty) + '</span>' : '') +
           '<button type="button" data-act="remove-item" data-id="' + i.id + '" class="x">✕</button>' +
         '</div>';
       }).join("") : '<p class="empty" style="padding:8px 14px;margin:0;font-size:.85rem">Produkte reinziehen</p>') +
@@ -645,10 +643,7 @@ document.addEventListener("drop", function(e){
   } else if(dragType === "product" && z.dataset.drop){
     var cat = db.catalog.filter(function(c){ return c.id === dragId; })[0];
     if(cat){
-      var qty = prompt("Menge (optional):", "");
-      if(qty !== null){
-        put("items", {id:uid(), name:cat.name, qty:qty.trim(), marketId:z.dataset.drop, done:false, createdAt:Date.now()});
-      }
+      put("items", {id:uid(), name:cat.name, qty:"", marketId:z.dataset.drop, done:false, createdAt:Date.now()});
     }
   }
   dragId = null; dragType = null;
