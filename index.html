@@ -125,7 +125,9 @@ select.pick{width:auto;max-width:150px;padding:5px 7px;font-size:.8rem;border-ra
 
 /* catalog */
 .pills{display:flex;flex-wrap:wrap;gap:7px}
-.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 6px 5px 12px;font-size:.86rem}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 6px 5px 12px;font-size:.86rem;cursor:grab;user-select:none}
+.pill:active{cursor:grabbing}
+.pill.dragging{opacity:.4}
 .pill .drop{border:0;background:transparent;color:var(--ink-3);cursor:pointer;padding:0 4px;font-size:.85rem}
 
 /* markets */
@@ -193,11 +195,12 @@ footer{margin-top:26px;color:var(--ink-3);font-size:.76rem;text-align:center}
   <!-- Sammelliste -->
   <section id="panel-sammel" class="stack" role="tabpanel" aria-labelledby="tab-sammel" hidden>
     <form class="add" id="cat-form" autocomplete="off">
-      <input class="name" id="cat-name" type="text" placeholder="Neues Produkt merken" aria-label="Produkt" required>
-      <button class="btn primary" type="submit">Merken</button>
+      <input class="name" id="cat-name" type="text" placeholder="Neues Produkt" aria-label="Produkt" required>
+      <button class="btn primary" type="submit">Hinzufügen</button>
     </form>
     <div class="card" id="catalog"></div>
-    <p class="muted">Produkte hier eintragen, dann in Märkte zuordnen.</p>
+    <p class="label" style="margin-top:14px">Produkte in Märkte ziehen</p>
+    <div class="markets-grid" id="sammel-markets"></div>
   </section>
 
   <!-- Märkte -->

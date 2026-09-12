@@ -293,7 +293,7 @@ function renderGroups(){
     ? '<button type="button" class="btn" data-act="clear-done" data-id="all">Alle erledigten entfernen</button>' : "";
 }
 
-/* ---------- Sammelliste: nur eingeben ---------- */
+/* ---------- Sammelliste: eingeben + Märkte zuordnen ---------- */
 function renderCatalog(){
   var host = $("#catalog");
   if(!db.catalog.length){
@@ -302,11 +302,36 @@ function renderCatalog(){
   }
   var sorted = db.catalog.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
   host.innerHTML = '<div class="pills">' + sorted.map(function(c){
-    return '<span class="pill">' + esc(c.name) +
+    return '<span class="pill" draggable="true" data-id="' + c.id + '" data-drag-product="true">' +
+      esc(c.name) +
       '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
         ' aus der Sammelliste löschen">✕</button>' +
     '</span>';
   }).join("") + '</div>';
+}
+
+function renderSammelMarkets(){
+  var host = $("#sammel-markets");
+  if(!db.markets.length){
+    host.innerHTML = '<p class="empty">Keine Märkte. Im Tab Märkte welche anlegen.</p>';
+    return;
+  }
+  host.innerHTML = db.markets.map(function(m){
+    var items = db.items.filter(function(i){ return i.marketId === m.id; });
+    return '<div class="market-card" data-drop="' + m.id + '" data-drag-zone="true">' +
+      '<div class="market-head"><span class="dot" style="background:' + m.color + '"></span>' +
+        '<h3 style="margin:0;font-weight:600;font-size:.95rem">' + esc(m.name) + '</h3>' +
+        '<span class="muted" style="margin-left:auto;font-size:.78rem">' + items.length + '</span>' +
+      '</div>' +
+      '<div class="market-items">' + (items.length ? items.map(function(i){
+        return '<div class="market-item">' +
+          '<span>' + esc(i.name) + '</span>' +
+          (i.qty ? '<span class="muted">' + esc(i.qty) + '</span>' : '') +
+          '<button type="button" data-act="remove-item" data-id="' + i.id + '" class="x">✕</button>' +
+        '</div>';
+      }).join("") : '<p class="empty" style="padding:8px 14px;margin:0;font-size:.85rem">Produkte reinziehen</p>') +
+      '</div></div>';
+  }).join("");
 }
 
 /* ---------- Märkte: Produkte zuordnen ---------- */
@@ -420,7 +445,7 @@ function renderHead(){
 function render(){
   renderHead();
   if(ui.tab === "liste"){ renderChips(); renderGroups(); }
-  if(ui.tab === "sammel"){ renderCatalog(); }
+  if(ui.tab === "sammel"){ renderCatalog(); renderSammelMarkets(); }
   if(ui.tab === "maerkte"){ renderMarkets(); renderSync(); }
 }
 
@@ -585,6 +610,50 @@ $("#market-form").addEventListener("submit", function(e){
 
 window.addEventListener("hashchange", function(){
   if(SYNC.configured() && !SYNC.isOn()) SYNC.start();
+});
+
+/* ---------- Drag und Drop: Produkte in Märkte ---------- */
+var dragId = null, dragType = null, zone = null;
+document.addEventListener("dragstart", function(e){
+  var row = e.target.closest(".item");
+  var pill = e.target.closest("[data-drag-product]");
+  if(row){ dragId = row.dataset.id; dragType = "item"; row.classList.add("dragging"); }
+  else if(pill){ dragId = pill.dataset.id; dragType = "product"; pill.classList.add("dragging"); }
+  else return;
+  try { e.dataTransfer.setData("text/plain", dragId); e.dataTransfer.effectAllowed = "move"; } catch(err){}
+});
+document.addEventListener("dragend", function(){
+  dragId = null; dragType = null;
+  document.querySelectorAll(".dragging").forEach(function(n){ n.classList.remove("dragging"); });
+  if(zone){ zone.classList.remove("over"); zone = null; }
+});
+document.addEventListener("dragover", function(e){
+  if(!dragId) return;
+  var z = e.target.closest("[data-drop]");
+  if(!z) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  if(zone !== z){ if(zone) zone.classList.remove("over"); zone = z; z.classList.add("over"); }
+});
+document.addEventListener("drop", function(e){
+  var z = e.target.closest("[data-drop]");
+  if(!z || !dragId) return;
+  e.preventDefault();
+  if(dragType === "item" && z.dataset.drop){
+    var it = item(dragId);
+    if(it){ it.marketId = z.dataset.drop || null; put("items", it); }
+  } else if(dragType === "product" && z.dataset.drop){
+    var cat = db.catalog.filter(function(c){ return c.id === dragId; })[0];
+    if(cat){
+      var qty = prompt("Menge (optional):", "");
+      if(qty !== null){
+        put("items", {id:uid(), name:cat.name, qty:qty.trim(), marketId:z.dataset.drop, done:false, createdAt:Date.now()});
+      }
+    }
+  }
+  dragId = null; dragType = null;
+  if(zone){ zone.classList.remove("over"); zone = null; }
+  render();
 });
 
 setTab("liste");
