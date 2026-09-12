@@ -348,38 +348,19 @@ function renderMarkets(){
     return;
   }
 
-  var html = '<div class="markets-grid">';
-
-  db.markets.forEach(function(m){
-    var items = db.items.filter(function(i){ return i.marketId === m.id; });
-    html += '<div class="market-card">' +
-      '<div class="market-head">' +
-        '<span class="dot" style="background:' + m.color + '"></span>' +
-        '<input type="text" value="' + esc(m.name) + '" data-act="rename" data-id="' + m.id + '" aria-label="Name des Markts">' +
-        '<button type="button" class="x" data-act="del-market" data-id="' + m.id + '" aria-label="' + esc(m.name) + ' löschen">✕</button>' +
-      '</div>' +
-      '<div class="market-items">' + items.map(function(i){
-        return '<div class="market-item">' +
-          '<span>' + esc(i.name) + '</span>' +
-          (i.qty ? '<span class="muted">' + esc(i.qty) + '</span>' : '') +
-          '<button type="button" data-act="remove-item" data-id="' + i.id + '" class="x">✕</button>' +
-        '</div>';
-      }).join("") + '</div>';
-
-    html += '<div class="add-item-section">' +
-      '<select id="select-' + m.id + '" class="pick-catalog" data-market="' + m.id + '" aria-label="Produkt hinzufügen"><option value="">Produkt wählen</option>';
-    db.catalog.forEach(function(c){
-      html += '<option value="' + c.id + '">' + esc(c.name) + '</option>';
-    });
-    html += '</select>' +
-      '<input type="text" id="qty-' + m.id + '" placeholder="Menge" class="qty-input" data-market="' + m.id + '" aria-label="Menge/Anmerkung">' +
-      '<button type="button" class="btn small" data-act="add-to-market" data-id="' + m.id + '">Hinzufügen</button>' +
-    '</div>' +
+  host.innerHTML = '<div class="mrow-list">' + db.markets.map(function(m){
+    var n = db.items.filter(function(i){ return i.marketId === m.id; }).length;
+    return '<div class="mrow">' +
+      '<span class="dot" style="background:' + m.color + '"></span>' +
+      '<input type="text" value="' + esc(m.name) + '" data-act="rename" data-id="' + m.id + '" aria-label="Name des Markts">' +
+      '<span class="swatches">' + COLORS.map(function(c){
+        return '<button type="button" class="sw" style="background:' + c + '" data-act="color" data-id="' + m.id +
+               '" data-color="' + c + '" aria-pressed="' + (c===m.color) + '" aria-label="Farbe ' + c + '"></button>';
+      }).join("") + '</span>' +
+      '<span class="muted" style="font-size:.78rem">' + n + ' auf der Liste</span>' +
+      '<button type="button" class="x" data-act="del-market" data-id="' + m.id + '" aria-label="' + esc(m.name) + ' löschen">✕</button>' +
     '</div>';
-  });
-
-  html += '</div>';
-  host.innerHTML = html;
+  }).join("") + '</div>';
 }
 
 /* ---------- Geteilte Liste ---------- */
@@ -489,17 +470,6 @@ document.addEventListener("click", function(e){
 
   else if(act === "cat-del"){ drop("catalog", id); renderCatalog(); }
 
-  else if(act === "add-to-market"){
-    var sel = $("#select-" + id);
-    var qty = $("#qty-" + id);
-    if(!sel.value) return;
-    var cat = db.catalog.filter(function(c){ return c.id === sel.value; })[0];
-    if(!cat) return;
-    put("items", {id:uid(), name:cat.name, qty:qty.value.trim(), marketId:id, done:false, createdAt:Date.now()});
-    sel.value = "";
-    qty.value = "";
-    render();
-  }
 
   else if(act === "remove-item"){ drop("items", id); render(); }
 
