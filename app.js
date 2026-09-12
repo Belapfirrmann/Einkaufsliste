@@ -70,7 +70,7 @@ function addToMarket(name, marketId){
 /* ---------- Abgleich ueber Firebase ---------- */
 var SYNC = (function(){
   var cfg = null, code = null, ref = null, fb = null;
-  var mode = "off", note = "", applying = false, started = false;
+  var mode = "off", note = "", applying = false, started = false, seeded = false;
 
   function readConfig(){
     var c = window.MARKTLISTE_FIREBASE || null;
@@ -150,10 +150,10 @@ var SYNC = (function(){
       set(s.val() ? "online" : "offline");
     });
     ref.on("value", onRemote, function(err){
-      var code = (err && (err.code || err.message) || "") + "";
+      var reason = (err && (err.code || err.message) || "") + "";
       /* Der haeufigste Fall: die Datenbank steht noch im gesperrten Modus,
          in dem auch angemeldete Geraete nichts lesen duerfen. */
-      set("error", /permission|denied/i.test(code)
+      set("error", /permission|denied/i.test(reason)
         ? "Die Datenbank lässt niemanden rein. In der Firebase-Konsole unter Realtime Database "
           + "auf den Reiter Regeln gehen und dort .read und .write auf \"auth != null\" setzen, "
           + "dann Veröffentlichen. Die fertigen Regeln stehen in der README."
@@ -171,7 +171,21 @@ var SYNC = (function(){
 
   function onRemote(snap){
     var v = snap.val();
-    if(!v || (!v.items && !v.markets && !v.catalog)){ pushAll(); set(mode === "offline" ? "offline" : "online"); return; }
+    if(!v || (!v.items && !v.markets && !v.catalog)){
+      /* Nur eine noch unbenutzte Liste mit dem hiesigen Stand fuellen. Spaeter
+         heisst leer wirklich leer: sonst schiebt dieses Geraet alles zurueck,
+         was ein anderes gerade geloescht hat. */
+      if(!seeded){ seeded = true; pushAll(); }
+      else {
+        applying = true;
+        db.markets = []; db.catalog = []; db.items = [];
+        applying = false;
+        save(); render();
+      }
+      set(mode === "offline" ? "offline" : "online");
+      return;
+    }
+    seeded = true;
     applying = true;
     db.markets = toList(v.markets, function(a,b){ return (a.order||0) - (b.order||0); });
     db.catalog = toList(v.catalog, function(a,b){ return a.name.localeCompare(b.name,"de"); });
@@ -195,7 +209,17 @@ var SYNC = (function(){
     db.markets.forEach(function(m, i){ m.order = i; payload.markets[m.id] = clean(m); });
     db.catalog.forEach(function(c){ payload.catalog[c.id] = clean(c); });
     db.items.forEach(function(i){ payload.items[i.id] = clean(i); });
-    ref.set(payload);
+    /* Nur eine wirklich leere Liste befuellen, und das unteilbar. Sonst kann
+       ein Geraet, das im falschen Moment nichts gesehen hat, die Liste aller
+       anderen ueberschreiben. */
+    if(ref.transaction){
+      ref.transaction(function(cur){
+        if(cur && (cur.items || cur.markets || cur.catalog)) return;
+        return payload;
+      });
+    } else {
+      ref.set(payload);
+    }
   }
 
   return {
@@ -215,6 +239,9 @@ var SYNC = (function(){
       if(!/^[a-z0-9_-]{4,24}$/.test(c)) return "Der Code besteht aus mindestens vier Zeichen.";
       if(ref){ ref.off(); ref = null; }
       started = false;
+      /* Die neue Liste ist aus Sicht dieses Geraets wieder unbeschrieben:
+         ist sie leer, bekommt sie den hiesigen Stand statt ihn zu loeschen. */
+      seeded = false;
       rememberCode(c);
       start();
       return null;
@@ -442,6 +469,10 @@ function renderSync(){
     '<div><p class="label">Gemeinsame Liste</p>' +
     '<p class="muted"><span class="syncdot ' + mode + '"></span>' + t[0] + '. ' + esc(text) + '</p></div>' +
     (SYNC.code() ?
+      '<div><p class="label">Code dieser Liste</p>' +
+      '<p class="listcode">' + esc(SYNC.code()) + '</p>' +
+      '<p class="muted">Auf allen Geräten muss derselbe Code stehen. Steht dort ein anderer, ' +
+      'unten beitreten oder den Link unten öffnen.</p></div>' +
       '<div><p class="label">Link zum Teilen</p>' +
       '<input type="text" id="sync-link" readonly value="' + esc(SYNC.link()) + '" aria-label="Link zur gemeinsamen Liste"></div>' +
       '<div class="row-btns">' +
