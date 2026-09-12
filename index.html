@@ -139,12 +139,18 @@ select.pick{width:auto;max-width:150px;padding:5px 7px;font-size:.8rem;border-ra
 .market-items{display:flex;flex-direction:column;max-height:240px;overflow-y:auto}
 .market-item{display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid var(--line);font-size:.9rem}
 .market-item:first-child{border-top:0}
-.market-item span:first-child{flex:1;font-weight:500}
-.market-item .muted{flex:0 0 auto}
+.market-item span:first-child{flex:1;font-weight:500;overflow-wrap:anywhere}
 .market-item .x{flex:0 0 auto;padding:3px 5px}
-.add-item-section{display:flex;flex-wrap:wrap;gap:6px;padding:9px 14px;border-top:1px solid var(--line);background:var(--sunk)}
-.add-item-section select,.add-item-section input{flex:1 1 100px;min-width:0}
-.add-item-section .btn{flex:0 0 auto}
+.market-card.over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+
+/* Märkte verwalten */
+.mrow{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:12px 14px;border-top:1px solid var(--line)}
+.mrow:first-child{border-top:0}
+.mrow input[type=text]{flex:1 1 140px;width:auto;border-color:transparent;background:transparent;padding:5px 7px;font-weight:600}
+.mrow input[type=text]:hover{border-color:var(--line-2)}
+.swatches{display:flex;gap:5px;flex-wrap:wrap}
+.sw{width:19px;height:19px;border-radius:6px;border:2px solid transparent;cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{border-color:var(--ink)}
 .syncdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:var(--ink-3)}
 .syncdot.online{background:var(--ok)}
 .syncdot.connecting,.syncdot.offline{background:var(--warn)}
