@@ -57,6 +57,14 @@ function drop(kind, id){
 }
 function item(id){ return db.items.filter(function(i){ return i.id===id; })[0] || null; }
 
+/* Steht das Produkt schon offen auf der Einkaufsliste? Erledigtes zaehlt
+   nicht mit, sonst bliebe es nach dem Einkauf fuer immer ausgegraut. */
+function onList(name){
+  return db.items.some(function(i){
+    return !i.done && i.name.toLowerCase() === name.toLowerCase();
+  });
+}
+
 function addToMarket(name, marketId){
   var dup = db.items.some(function(i){
     return i.marketId === marketId && i.name.toLowerCase() === name.toLowerCase() && !i.done;
@@ -367,8 +375,11 @@ function renderCatalog(){
   var sorted = db.catalog.slice().sort(function(a,b){ return a.name.localeCompare(b.name,"de"); });
   host.innerHTML = '<div class="pills">' + sorted.map(function(c){
     var on = ui.picked === c.id;
-    return '<span class="pill' + (on ? " picked" : "") + isFresh(c.id) + '" data-drag="product" data-id="' + c.id + '">' +
-      '<button type="button" class="pillname" data-act="pick" data-id="' + c.id + '" aria-pressed="' + on + '">' +
+    var used = onList(c.name);
+    return '<span class="pill' + (on ? " picked" : "") + (used ? " used" : "") + isFresh(c.id) +
+      '" data-drag="product" data-id="' + c.id + '">' +
+      '<button type="button" class="pillname" data-act="pick" data-id="' + c.id + '" aria-pressed="' + on +
+        '"' + (used ? ' title="steht schon auf der Einkaufsliste"' : "") + '>' +
         esc(c.name) + '</button>' +
       '<button type="button" class="drop" data-act="cat-del" data-id="' + c.id + '" aria-label="' + esc(c.name) +
         ' aus der Sammelliste löschen">✕</button>' +

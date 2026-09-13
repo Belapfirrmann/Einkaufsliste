@@ -129,6 +129,9 @@ select.pick{width:auto;max-width:150px;padding:5px 7px;font-size:.8rem;border-ra
 /* catalog */
 .pills{display:flex;flex-wrap:wrap;gap:7px;padding:12px 14px}
 .pill{display:inline-flex;align-items:center;max-width:100%;border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:0 6px 0 0;font-size:.86rem;user-select:none;touch-action:none}
+/* liegt schon in einem Markt: tritt zurueck, bleibt aber greifbar */
+.pill.used{opacity:.42}
+.pill.used.picked,.dragfly.used{opacity:.96}
 .pill.picked{background:var(--accent);border-color:var(--accent)}
 .pill.picked .pillname{color:var(--accent-ink)}
 .pill.picked .drop{color:var(--accent-ink);opacity:.75}
@@ -210,7 +213,7 @@ li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezie
 .tick[aria-pressed="false"] svg{transform:scale(.4)}
 
 @media (prefers-reduced-motion:no-preference){
-  .pill,.chip,.market-card{transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease}
+  .pill,.chip,.market-card{transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease,opacity .2s ease}
   .tick{transition:background-color .12s ease,border-color .12s ease}
   .sw{transition:transform .14s cubic-bezier(.3,1.4,.5,1),border-color .14s ease}
   .sw:hover{transform:scale(1.18)}
@@ -297,6 +300,6 @@ li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezie
   <footer>Marktliste · offline im Browser gespeichert</footer>
 </div>
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
