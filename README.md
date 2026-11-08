@@ -25,6 +25,16 @@ mit seinem Standardmarkt. Ein Tipp auf `+` setzt ein Produkt mit diesem Markt
 auf die Einkaufsliste, ein weiterer nimmt es wieder runter. Neu eingetragene
 Produkte landen automatisch in der Sammelliste (Haken lässt sich abwählen).
 
+**Daueraufträge** für alles, was regelmäßig gebraucht wird: Produkt, Markt,
+Abstand (jede Woche, alle 2 oder 3 Wochen, jeden Monat) und erster Termin
+eintragen. Ist ein Termin erreicht, steht das Produkt von selbst auf der
+Einkaufsliste, markiert mit ↻. Steht es dort noch offen, kommt es nicht
+doppelt. Monatliche Aufträge bleiben am selben Tag, am 31. rutschen sie in
+kurzen Monaten auf den Monatsletzten. Abstand, Markt und nächster Termin
+lassen sich jederzeit ändern, „Jetzt auf die Liste“ zieht einen Termin vor.
+Mit gemeinsamer Liste prüft jedes Gerät erst nach dem Abgleich, was fällig
+ist, und derselbe Termin landet auch bei zwei Geräten nur einmal auf der Liste.
+
 **Märkte** frei anlegen, umbenennen, einfärben und löschen. Beim Löschen
 wandern die betroffenen Produkte zurück nach „Ohne Markt“.
 
@@ -86,7 +96,7 @@ eine Einkaufsliste reicht das, Kontodaten gehören da trotzdem nicht rein.
 - `firebase-config.js` – Zugangsdaten der gemeinsamen Liste, leer bis eingerichtet
 - `favicon.svg`, `icon.png`, `manifest.webmanifest` – Icon und Startbildschirm
 - Speicherschlüssel: `marktliste.v1`, Listen-Code unter `marktliste.code`
-- Datenmodell lokal und in der Datenbank: `{ markets[], catalog[], items[] }`,
+- Datenmodell lokal und in der Datenbank: `{ markets[], catalog[], items[], recurring[] }`,
   in Firebase unter `listen/<code>/` jeweils als Objekt mit den IDs als Schlüssel
 
 Beim ersten Start ist die Liste mit Beispieldaten gefüllt. „Alles zurücksetzen“
