@@ -65,6 +65,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .tabs button{flex:1;border:0;background:transparent;color:var(--ink-2);padding:8px 6px;border-radius:8px;font-weight:600;font-size:.88rem;cursor:pointer;
   position:relative;z-index:1;transition:color .18s ease}
 .tabs button[aria-selected="true"]{color:var(--ink)}
+/* Vier Reiter muessen auch auf ein schmales Handy passen */
+@media (max-width:460px){
+  .tabs{gap:2px;padding:3px}
+  .tabs button{flex:1 1 auto;padding:8px 2px;font-size:.76rem;letter-spacing:-.01em}
+  .glider{top:3px;bottom:3px}
+}
 /* wandert unter den gewaehlten Reiter, statt dass der Hintergrund umspringt */
 .glider{position:absolute;top:4px;bottom:4px;left:0;width:0;border-radius:8px;
   background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.08);
@@ -81,7 +87,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .btn.ghost{border-color:transparent;background:transparent;color:var(--ink-2);padding:6px 8px}
 .btn.ghost:hover{color:var(--ink);background:var(--surface-2)}
 .btn.small{padding:5px 9px;font-size:.78rem;border-radius:8px}
-input[type=text],input[type=search],select,textarea{
+input[type=text],input[type=search],input[type=date],select,textarea{
   background:var(--surface);border:1px solid var(--line-2);border-radius:10px;padding:9px 11px;width:100%;min-width:0;
 }
 input::placeholder{color:var(--ink-3)}
@@ -155,6 +161,21 @@ select.pick{width:auto;max-width:150px;padding:5px 7px;font-size:.8rem;border-ra
 .market-item span:first-child{flex:1;font-weight:500;overflow-wrap:anywhere}
 .market-item .x{flex:0 0 auto;padding:3px 5px}
 
+/* Daueraufträge */
+#rec-form .mk{flex:1 1 130px}
+.startday{display:flex;align-items:center;gap:7px;flex:0 1 180px;font-size:.84rem;color:var(--ink-2)}
+.startday input{flex:1}
+.rrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:12px 14px;border-top:1px solid var(--line)}
+.rrow:first-child{border-top:0}
+.rmain{flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:1px}
+.rname{font-weight:600;overflow-wrap:anywhere}
+.rsub{font-size:.8rem;color:var(--ink-2)}
+.rtools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-basis:100%;padding-left:21px}
+.rdate{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--ink-2)}
+.rdate input{width:auto;padding:4px 7px;font-size:.8rem;border-radius:8px;background:var(--sunk);border-color:var(--line)}
+.recmark{color:var(--ink-3);font-size:.82em;font-weight:500}
+.done .recmark{text-decoration:none}
+
 /* Märkte verwalten */
 .mrow{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:12px 14px;border-top:1px solid var(--line)}
 .mrow:first-child{border-top:0}
@@ -194,7 +215,7 @@ body.dragging-now{cursor:grabbing;user-select:none;-webkit-user-select:none}
   from{opacity:0;transform:scale(.82)}
   to{opacity:1;transform:scale(1)}
 }
-li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezier(.3,1.2,.5,1)}
+li.item.fresh,.market-item.fresh,.mrow.fresh,.rrow.fresh{animation:freshRow .28s cubic-bezier(.3,1.2,.5,1)}
 @keyframes freshRow{
   from{opacity:0;transform:translateY(-7px)}
   to{opacity:1;transform:translateY(0)}
@@ -251,6 +272,7 @@ li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezie
       <span class="glider" id="glider" aria-hidden="true"></span>
       <button role="tab" id="tab-liste" data-tab="liste" aria-selected="true">Einkaufsliste</button>
       <button role="tab" id="tab-sammel" data-tab="sammel" aria-selected="false">Sammelliste</button>
+      <button role="tab" id="tab-dauer" data-tab="dauer" aria-selected="false">Daueraufträge</button>
       <button role="tab" id="tab-maerkte" data-tab="maerkte" aria-selected="false">Märkte</button>
     </nav>
   </header>
@@ -272,6 +294,20 @@ li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezie
     <div class="row-btns" id="cat-actions"></div>
     <p class="muted" id="sammel-hint"></p>
     <div class="markets-grid" id="sammel-markets"></div>
+  </section>
+
+  <!-- Daueraufträge -->
+  <section id="panel-dauer" class="stack" role="tabpanel" aria-labelledby="tab-dauer" hidden>
+    <form class="add" id="rec-form" autocomplete="off">
+      <input class="name" id="rec-name" type="text" list="rec-names" placeholder="Produkt, z. B. Kaffee" aria-label="Produkt" required>
+      <datalist id="rec-names"></datalist>
+      <select class="mk" id="rec-market" aria-label="Markt"></select>
+      <select class="mk" id="rec-every" aria-label="Abstand"></select>
+      <label class="startday">ab <input type="date" id="rec-start" aria-label="Erstes Mal"></label>
+      <button class="btn primary" type="submit">Anlegen</button>
+    </form>
+    <p class="muted">Ein Dauerauftrag setzt das Produkt im gewählten Abstand von selbst auf die Einkaufsliste. Steht es dort noch offen, kommt es nicht doppelt.</p>
+    <div class="card" id="recurring"></div>
   </section>
 
   <!-- Märkte -->
@@ -300,6 +336,6 @@ li.item.fresh,.market-item.fresh,.mrow.fresh{animation:freshRow .28s cubic-bezie
   <footer>Marktliste · offline im Browser gespeichert</footer>
 </div>
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

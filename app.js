@@ -23,7 +23,7 @@ function seed(){
     {id:"m3", name:"dm",      color:COLORS[2], order:2},
     {id:"m4", name:"Bauhaus", color:COLORS[4], order:3}
   ];
-  return {markets:m, catalog:[], items:[]};
+  return {markets:m, catalog:[], items:[], recurring:[]};
 }
 
 var db;
@@ -31,6 +31,7 @@ try { var raw = localStorage.getItem(KEY); db = raw ? JSON.parse(raw) : seed(); 
 catch(e){ db = seed(); }
 if(!db || !Array.isArray(db.markets)) db = seed();
 db.markets = db.markets || []; db.catalog = db.catalog || []; db.items = db.items || [];
+db.recurring = db.recurring || [];
 db.markets.forEach(function(m, i){ if(typeof m.order !== "number") m.order = i; });
 db.items.forEach(function(it, i){ if(typeof it.createdAt !== "number") it.createdAt = i; });
 
@@ -75,10 +76,79 @@ function addToMarket(name, marketId){
   ui.fresh = it.id;
 }
 
+/* ---------- Dauerauftraege ----------
+   Ein Dauerauftrag merkt sich, wann er das naechste Mal faellig ist
+   (next, als Tag "JJJJ-MM-TT"). Ist der Tag erreicht, landet das Produkt
+   auf der Einkaufsliste und next rueckt um das Intervall weiter. */
+var EVERY = {
+  "1w": {days:7,  label:"Jede Woche"},
+  "2w": {days:14, label:"Alle 2 Wochen"},
+  "3w": {days:21, label:"Alle 3 Wochen"},
+  "1m": {months:1, label:"Jeden Monat"}
+};
+var EVERY_KEYS = ["1w","2w","3w","1m"];
+
+function pad(n){ return (n < 10 ? "0" : "") + n; }
+function dayStr(d){ return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+function today(){ return dayStr(new Date()); }
+/* Mittags rechnen, damit die Zeitumstellung keinen Tag verschluckt. */
+function parseDay(s){ var p = String(s).split("-"); return new Date(+p[0], +p[1] - 1, +p[2], 12); }
+function step(s, every, anchor){
+  var e = EVERY[every] || EVERY["1w"];
+  var d = parseDay(s);
+  if(e.days){ d.setDate(d.getDate() + e.days); return dayStr(d); }
+  /* Monatlich am selben Tag. Gibt es den Tag nicht (31.), dann der letzte
+     des Monats, im Folgemonat aber wieder der urspruengliche. */
+  var want = anchor || d.getDate();
+  var y = d.getFullYear(), m = d.getMonth() + 1;
+  if(m > 11){ m = 0; y++; }
+  var last = new Date(y, m + 1, 0).getDate();
+  return dayStr(new Date(y, m, Math.min(want, last), 12));
+}
+function niceDay(s){
+  var t = today();
+  if(s === t) return "heute";
+  var tm = parseDay(t); tm.setDate(tm.getDate() + 1);
+  if(s === dayStr(tm)) return "morgen";
+  return parseDay(s).toLocaleDateString("de-DE", {weekday:"short", day:"2-digit", month:"2-digit"});
+}
+function rec(id){ return db.recurring.filter(function(r){ return r.id === id; })[0] || null; }
+
+/* Faellige Auftraege auf die Liste setzen. Die ID des Eintrags folgt aus
+   Auftrag und Termin: legen zwei Geraete ihn gleichzeitig an, schreiben
+   beide denselben Eintrag statt zwei. */
+var recBusy = false;
+function applyRecurring(){
+  /* Firebase meldet eigene Schreibvorgaenge sofort zurueck, dabei kaeme
+     dieselbe Pruefung verschachtelt noch einmal dran. */
+  if(recBusy || !SYNC.ready()) return false;
+  recBusy = true;
+  try { return runRecurring(); } finally { recBusy = false; }
+}
+function runRecurring(){
+  var t = today(), changed = false;
+  db.recurring.slice().forEach(function(r){
+    if(!r.next || r.next > t) return;
+    var id = "r" + r.id + "-" + r.next.replace(/-/g, "");
+    if(!item(id) && !onList(r.name)){
+      var it = {id:id, name:r.name, marketId:market(r.marketId) ? r.marketId : null,
+                done:false, createdAt:Date.now(), rec:r.id};
+      put("items", it);
+    }
+    var n = r.next;
+    while(n <= t) n = step(n, r.every, r.day);
+    r.next = n;
+    r.last = t;
+    put("recurring", r);
+    changed = true;
+  });
+  return changed;
+}
+
 /* ---------- Abgleich ueber Firebase ---------- */
 var SYNC = (function(){
   var cfg = null, code = null, ref = null, fb = null;
-  var mode = "off", note = "", applying = false, started = false, seeded = false;
+  var mode = "off", note = "", applying = false, started = false, seeded = false, received = false;
 
   function readConfig(){
     var c = window.MARKTLISTE_FIREBASE || null;
@@ -109,7 +179,11 @@ var SYNC = (function(){
   function link(){
     return code ? location.origin + location.pathname + "#liste=" + code : "";
   }
-  function set(m, n){ mode = m; note = n || ""; renderSync(); renderHead(); }
+  function set(m, n){
+    mode = m; note = n || ""; renderSync(); renderHead();
+    /* Kommt die gemeinsame Liste nicht zustande, gilt der Stand hier. */
+    if(m === "error" && applyRecurring()) render();
+  }
 
   function loadScripts(files, done, fail){
     var next = function(){
@@ -179,14 +253,15 @@ var SYNC = (function(){
 
   function onRemote(snap){
     var v = snap.val();
-    if(!v || (!v.items && !v.markets && !v.catalog)){
+    received = true;
+    if(!v || (!v.items && !v.markets && !v.catalog && !v.recurring)){
       /* Nur eine noch unbenutzte Liste mit dem hiesigen Stand fuellen. Spaeter
          heisst leer wirklich leer: sonst schiebt dieses Geraet alles zurueck,
          was ein anderes gerade geloescht hat. */
       if(!seeded){ seeded = true; pushAll(); }
       else {
         applying = true;
-        db.markets = []; db.catalog = []; db.items = [];
+        db.markets = []; db.catalog = []; db.items = []; db.recurring = [];
         applying = false;
         save(); render();
       }
@@ -199,7 +274,12 @@ var SYNC = (function(){
     db.catalog = toList(v.catalog, function(a,b){ return a.name.localeCompare(b.name,"de"); });
     db.items   = toList(v.items,   function(a,b){ return (a.createdAt||0) - (b.createdAt||0); });
     db.items.forEach(function(i){ i.done = !!i.done; i.qty = i.qty || ""; i.marketId = i.marketId || null; });
+    db.recurring = toList(v.recurring, function(a,b){ return a.name.localeCompare(b.name,"de"); });
+    db.recurring.forEach(function(r){ r.marketId = r.marketId || null; });
     applying = false;
+    /* Erst mit dem Stand der gemeinsamen Liste pruefen, was faellig ist,
+       sonst setzt ein Geraet mit altem Stand Erledigtes erneut drauf. */
+    applyRecurring();
     save(); render();
   }
 
@@ -213,16 +293,17 @@ var SYNC = (function(){
 
   function pushAll(){
     if(!ref) return;
-    var payload = {markets:{}, catalog:{}, items:{}};
+    var payload = {markets:{}, catalog:{}, items:{}, recurring:{}};
     db.markets.forEach(function(m, i){ m.order = i; payload.markets[m.id] = clean(m); });
     db.catalog.forEach(function(c){ payload.catalog[c.id] = clean(c); });
     db.items.forEach(function(i){ payload.items[i.id] = clean(i); });
+    db.recurring.forEach(function(r){ payload.recurring[r.id] = clean(r); });
     /* Nur eine wirklich leere Liste befuellen, und das unteilbar. Sonst kann
        ein Geraet, das im falschen Moment nichts gesehen hat, die Liste aller
        anderen ueberschreiben. */
     if(ref.transaction){
       ref.transaction(function(cur){
-        if(cur && (cur.items || cur.markets || cur.catalog)) return;
+        if(cur && (cur.items || cur.markets || cur.catalog || cur.recurring)) return;
         return payload;
       });
     } else {
@@ -233,6 +314,9 @@ var SYNC = (function(){
   return {
     start: start,
     isOn: function(){ return !!ref; },
+    /* Darf dieses Geraet Dauerauftraege ausloesen? Ohne gemeinsame Liste
+       immer, mit ihr erst, wenn ihr Stand angekommen ist. */
+    ready: function(){ return !readConfig() || received || mode === "error"; },
     mode: function(){ return mode; },
     note: function(){ return note; },
     code: function(){ return code; },
@@ -250,6 +334,7 @@ var SYNC = (function(){
       /* Die neue Liste ist aus Sicht dieses Geraets wieder unbeschrieben:
          ist sie leer, bekommt sie den hiesigen Stand statt ihn zu loeschen. */
       seeded = false;
+      received = false;
       rememberCode(c);
       start();
       return null;
@@ -303,7 +388,8 @@ function itemRow(it){
       '" aria-label="' + esc(it.name) + ' abhaken">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     '</button>' +
-    '<span class="itemname">' + esc(it.name) + '</span>' +
+    '<span class="itemname">' + esc(it.name) +
+      (it.rec ? ' <span class="recmark" title="aus einem Dauerauftrag" aria-label="Dauerauftrag">↻</span>' : "") + '</span>' +
     '<button type="button" class="x" data-act="del-item" data-id="' + it.id + '" aria-label="' + esc(it.name) + ' entfernen">✕</button>' +
     '</li>';
 }
@@ -448,6 +534,48 @@ function renderMarkets(){
   }).join("") + '</div>';
 }
 
+/* ---------- Dauerauftraege ---------- */
+function everyOptions(sel){
+  return EVERY_KEYS.map(function(k){
+    return '<option value="' + k + '"' + (k === sel ? " selected" : "") + '>' + EVERY[k].label + '</option>';
+  }).join("");
+}
+
+function renderRecurring(){
+  $("#rec-every").innerHTML = everyOptions($("#rec-every").value || "1w");
+  var mkSel = $("#rec-market").value;
+  $("#rec-market").innerHTML = marketOptions(mkSel);
+  if(!$("#rec-start").value) $("#rec-start").value = today();
+  $("#rec-names").innerHTML = db.catalog.map(function(c){ return '<option value="' + esc(c.name) + '">'; }).join("");
+
+  var host = $("#recurring");
+  if(!db.recurring.length){
+    host.innerHTML = '<p class="empty">Noch keine Daueraufträge. Oben ein Produkt eintragen, ' +
+      'es landet dann von selbst im gewählten Abstand auf der Einkaufsliste.</p>';
+    return;
+  }
+  var sorted = db.recurring.slice().sort(function(a,b){
+    return (a.next || "").localeCompare(b.next || "") || a.name.localeCompare(b.name, "de");
+  });
+  host.innerHTML = sorted.map(function(r){
+    var m = market(r.marketId);
+    var e = EVERY[r.every] || EVERY["1w"];
+    return '<div class="rrow' + isFresh(r.id) + '">' +
+      '<span class="dot" style="background:' + (m ? m.color : "var(--ink-3)") + '"></span>' +
+      '<div class="rmain"><span class="rname">' + esc(r.name) + '</span>' +
+        '<span class="rsub">' + e.label + ' · ' + esc(m ? m.name : "ohne Markt") +
+        ' · nächstes Mal ' + niceDay(r.next) + '</span></div>' +
+      '<button type="button" class="x" data-act="rec-del" data-id="' + r.id + '" aria-label="Dauerauftrag ' + esc(r.name) + ' löschen">✕</button>' +
+      '<div class="rtools">' +
+        '<select class="pick" data-act="rec-every" data-id="' + r.id + '" aria-label="Abstand">' + everyOptions(r.every) + '</select>' +
+        '<select class="pick" data-act="rec-market" data-id="' + r.id + '" aria-label="Markt">' + marketOptions(r.marketId) + '</select>' +
+        '<label class="rdate">nächstes Mal <input type="date" data-act="rec-next" data-id="' + r.id + '" value="' + esc(r.next) + '"></label>' +
+        '<button type="button" class="btn ghost small" data-act="rec-now" data-id="' + r.id + '">Jetzt auf die Liste</button>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
 /* ---------- Geteilte Liste ---------- */
 var SYNC_TEXT = {
   off:        ["ruht",      "Alles bleibt auf diesem Gerät."],
@@ -514,6 +642,7 @@ function render(){
   renderHead();
   if(ui.tab === "liste"){ renderChips(); renderGroups(); }
   if(ui.tab === "sammel"){ renderCatalog(); renderSammelMarkets(); }
+  if(ui.tab === "dauer"){ renderRecurring(); }
   if(ui.tab === "maerkte"){ renderMarkets(); renderSync(); }
   ui.fresh = null;
 }
@@ -537,7 +666,7 @@ function moveGlider(){
 function setTab(name){
   var same = ui.tab === name;
   ui.tab = name;
-  ["liste","sammel","maerkte"].forEach(function(t){
+  ["liste","sammel","dauer","maerkte"].forEach(function(t){
     var panel = $("#panel-" + t);
     panel.hidden = (t !== name);
     $("#tab-" + t).setAttribute("aria-selected", String(t === name));
@@ -618,6 +747,25 @@ document.addEventListener("click", function(e){
 
   else if(act === "remove-item"){ drop("items", id); render(); }
 
+  else if(act === "rec-del"){
+    var r0 = rec(id);
+    if(!r0 || !confirm("Dauerauftrag „" + r0.name + "“ löschen? Was schon auf der Einkaufsliste steht, bleibt.")) return;
+    drop("recurring", id); render();
+  }
+  else if(act === "rec-now"){
+    var r1 = rec(id);
+    if(!r1) return;
+    if(onList(r1.name)){ alert("„" + r1.name + "“ steht schon auf der Einkaufsliste."); return; }
+    var it1 = {id:uid(), name:r1.name, marketId:market(r1.marketId) ? r1.marketId : null,
+               done:false, createdAt:Date.now(), rec:r1.id};
+    put("items", it1);
+    /* Gilt als dieser Termin, der naechste rueckt ab heute weiter. */
+    r1.last = today();
+    r1.next = step(r1.last, r1.every, r1.day);
+    put("recurring", r1);
+    render();
+  }
+
   else if(act === "color"){
     var mk = market(id);
     if(!mk || mk.color === t.dataset.color) return;
@@ -641,30 +789,31 @@ document.addEventListener("click", function(e){
     var n = db.items.filter(function(i){ return i.marketId === id; }).length;
     if(!confirm('„' + m.name + '" löschen?' + (n ? " " + n + " Produkt(e) werden entfernt." : ""))) return;
     db.items.filter(function(i){ return i.marketId === id; }).forEach(function(i){ drop("items", i.id); });
+    db.recurring.filter(function(r){ return r.marketId === id; }).forEach(function(r){ r.marketId = null; put("recurring", r); });
     drop("markets", id);
     if(ui.filter === id) ui.filter = "all";
     render();
   }
 
   else if(act === "export"){
-    $("#backup").value = JSON.stringify({markets:db.markets, catalog:db.catalog, items:db.items});
+    $("#backup").value = JSON.stringify({markets:db.markets, catalog:db.catalog, items:db.items, recurring:db.recurring});
     msg("#backup-msg", "Text markieren und kopieren.");
   }
   else if(act === "import"){
     try {
       var d = JSON.parse($("#backup").value);
       if(!d.markets || !d.items) throw new Error("unvollständig");
-      db.markets = d.markets; db.catalog = d.catalog || []; db.items = d.items;
+      db.markets = d.markets; db.catalog = d.catalog || []; db.items = d.items; db.recurring = d.recurring || [];
       db.markets.forEach(function(m, i){ if(typeof m.order !== "number") m.order = i; });
       db.items.forEach(function(i, n){ if(typeof i.createdAt !== "number") i.createdAt = n; });
-      save(); SYNC.pushAll(); render();
+      save(); SYNC.pushAll(); applyRecurring(); render();
       msg("#backup-msg", "Daten übernommen.");
     } catch(err){ msg("#backup-msg", "Der Text ist keine gültige Sicherung. Bitte die komplette Zeile einfügen.", true); }
   }
   else if(act === "reset"){
     var shared = SYNC.isOn();
-    if(!confirm("Alle Listen, Produkte und Märkte löschen?" + (shared ? " Das trifft auch die anderen Geräte." : ""))) return;
-    db.markets = []; db.catalog = []; db.items = [];
+    if(!confirm("Alle Listen, Produkte, Daueraufträge und Märkte löschen?" + (shared ? " Das trifft auch die anderen Geräte." : ""))) return;
+    db.markets = []; db.catalog = []; db.items = []; db.recurring = [];
     save(); SYNC.wipe(); ui.filter = "all"; render();
     msg("#backup-msg", "Alles geleert.");
   }
@@ -711,6 +860,27 @@ document.addEventListener("change", function(e){
     if(!name){ renderMarkets(); return; }
     m.name = name; put("markets", m); render();
   }
+  else if(act === "rec-every" || act === "rec-market" || act === "rec-next"){
+    var r = rec(id);
+    if(!r) return;
+    if(act === "rec-market") r.marketId = t.value || null;
+    if(act === "rec-next"){
+      if(!t.value){ renderRecurring(); return; }
+      r.next = t.value;
+      r.day = parseDay(t.value).getDate();
+    }
+    if(act === "rec-every"){
+      r.every = t.value;
+      /* Der neue Abstand zaehlt ab dem letzten Mal, nicht ab dem alten Termin. */
+      if(r.last){
+        var n = step(r.last, r.every, r.day);
+        r.next = n < today() ? today() : n;
+      }
+    }
+    put("recurring", r);
+    applyRecurring();
+    render();
+  }
 });
 
 /* ---------- Formulare ---------- */
@@ -725,6 +895,21 @@ $("#cat-form").addEventListener("submit", function(e){
   }
   $("#cat-name").value = "";
   render(); $("#cat-name").focus();
+});
+
+$("#rec-form").addEventListener("submit", function(e){
+  e.preventDefault();
+  var name = $("#rec-name").value.trim();
+  if(!name) return;
+  var start = $("#rec-start").value || today();
+  var r = {id:uid(), name:name, marketId:$("#rec-market").value || null,
+           every:$("#rec-every").value || "1w", next:start, day:parseDay(start).getDate()};
+  put("recurring", r);
+  ui.fresh = r.id;
+  applyRecurring();
+  $("#rec-name").value = "";
+  $("#rec-start").value = today();
+  render(); $("#rec-name").focus();
 });
 
 $("#market-form").addEventListener("submit", function(e){
@@ -897,6 +1082,13 @@ var DRAG = (function(){
   return {busy: function(){ return !!(st && st.active); }};
 })();
 
+/* Laeuft die App ueber Mitternacht oder liegt sie im Hintergrund,
+   beim Zurueckkommen und sonst halbstuendlich nachsehen. */
+function checkRecurring(){ if(applyRecurring()) render(); }
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) checkRecurring(); });
+setInterval(checkRecurring, 30 * 60 * 1000);
+
+applyRecurring();
 setTab("liste");
 SYNC.start();
 })();
